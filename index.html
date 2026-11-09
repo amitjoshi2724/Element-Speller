@@ -88,10 +88,14 @@
 
                 <!-- Live Solve Stopwatch & Quick Action Controls -->
                 <div class="timer-control-row">
-                    <div class="stopwatch-badge" id="stopwatch-badge" title="Solve timer (started on first action)">
+                    <div class="stopwatch-badge" id="stopwatch-badge" title="Solve timer (click to pause/resume)">
                         <span class="timer-icon">⏱️</span>
                         <span id="live-timer-display" class="live-timer-display">00:00.0</span>
                     </div>
+                    <button id="pause-btn" class="quick-action-btn pause" title="Pause the game & timer">
+                        <span id="pause-btn-icon">⏸️</span>
+                        <span id="pause-btn-text">Pause</span>
+                    </button>
                     <div class="quick-action-group">
                         <button id="hint-btn" class="quick-action-btn hint" title="Get a hint for the next valid element">💡
                             Hint</button>
@@ -105,7 +109,17 @@
                 </div>
 
                 <!-- Target Word Display & Dynamic Placed Element Slots -->
-                <div class="target-word-container">
+                <div class="target-word-container" id="target-word-container">
+                    <!-- Pause Overlay (shown when paused to prevent peeking) -->
+                    <div id="pause-overlay" class="pause-overlay" style="display: none;">
+                        <div class="pause-overlay-content">
+                            <span class="pause-overlay-icon">⏸️</span>
+                            <div class="pause-overlay-title">Game Paused</div>
+                            <div class="pause-overlay-desc">Timer is paused. Take your time!</div>
+                            <button type="button" id="resume-btn" class="primary-btn resume-game-btn">▶️ Resume Game</button>
+                        </div>
+                    </div>
+
                     <div class="target-word-label">TARGET WORD</div>
                     <div id="target-word-display" class="target-word-display">------</div>
                     <div id="element-slots-row" class="element-slots-row">

@@ -166,6 +166,70 @@ h1 {
     background-color: #faf7ff;
     border: 2px dashed #9370db;
     border-radius: clamp(0.5rem, 1.2vw, 0.75rem);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Pause Overlay inside target word area (prevents peeking during pause) */
+.pause-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(253, 250, 255, 0.96);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: inherit;
+    z-index: 25;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    box-sizing: border-box;
+    animation: fadeInOverlay 0.2s ease;
+}
+
+.pause-overlay-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+    text-align: center;
+}
+
+.pause-overlay-icon {
+    font-size: 2.3rem;
+    line-height: 1;
+}
+
+.pause-overlay-title {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #4b0082;
+    letter-spacing: 0.5px;
+}
+
+.pause-overlay-desc {
+    font-size: 0.82rem;
+    color: #6b21a8;
+    margin-bottom: 0.35rem;
+}
+
+.resume-game-btn {
+    padding: 0.5rem 1.35rem;
+    font-size: 0.92rem;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35);
+    transition: all 0.2s ease;
+}
+
+.resume-game-btn:hover {
+    transform: scale(1.04) translateY(-1px);
+    box-shadow: 0 6px 16px rgba(124, 58, 237, 0.45);
+}
+
+@keyframes fadeInOverlay {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
 }
 
 .target-word-label {
@@ -915,6 +979,32 @@ button.primary-btn:disabled {
 .quick-action-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+
+.quick-action-btn.pause {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #334155;
+    font-weight: 700;
+}
+
+.quick-action-btn.pause:hover:not(:disabled) {
+    background: #e2e8f0;
+    border-color: #94a3b8;
+    color: #0f172a;
+    transform: translateY(-1px);
+}
+
+.quick-action-btn.pause.is-paused {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-color: #047857;
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+}
+
+.quick-action-btn.pause.is-paused:hover:not(:disabled) {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+    color: #ffffff;
 }
 
 .quick-action-btn.hint {

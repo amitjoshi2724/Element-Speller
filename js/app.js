@@ -33,11 +33,12 @@ class ElementSpellerGame {
         this.isWordRevealed = false;
         this.draggedElementIndex = null;
 
-        // Timer
+        // Timer & Pause State
         this.startTime = null;
         this.elapsedOffsetMs = 0;
         this.solveTimeMs = null;
         this.timerInterval = null;
+        this.isPaused = false;
 
         // Calendar Archive state
         const todayDate = parseDate(this.todayStr);
@@ -122,6 +123,12 @@ class ElementSpellerGame {
             modeTitle: document.getElementById("mode-title-text"),
             liveTimerDisplay: document.getElementById("live-timer-display"),
             stopwatchBadge: document.getElementById("stopwatch-badge"),
+            pauseBtn: document.getElementById("pause-btn"),
+            pauseBtnIcon: document.getElementById("pause-btn-icon"),
+            pauseBtnText: document.getElementById("pause-btn-text"),
+            pauseOverlay: document.getElementById("pause-overlay"),
+            resumeBtn: document.getElementById("resume-btn"),
+            targetWordContainer: document.getElementById("target-word-container"),
             hintBtn: document.getElementById("hint-btn"),
             undoBtn: document.getElementById("undo-element-btn"),
             clearWordBtn: document.getElementById("clear-word-btn"),
@@ -227,6 +234,9 @@ class ElementSpellerGame {
 
     handlePeriodicTableSelect(elem) {
         if (this.isGameOver) return;
+        if (this.isPaused) {
+            this.resumeGame();
+        }
 
         // Auto-start timer on first element placement if not already running
         if (!this.timerInterval) {
@@ -253,6 +263,21 @@ class ElementSpellerGame {
                 if (e.key === "Enter") {
                     e.preventDefault();
                     this.handleGuess();
+                }
+            });
+        }
+
+        // Pause & Resume controls
+        if (this.dom.pauseBtn) {
+            this.dom.pauseBtn.addEventListener("click", () => this.togglePause());
+        }
+        if (this.dom.resumeBtn) {
+            this.dom.resumeBtn.addEventListener("click", () => this.resumeGame());
+        }
+        if (this.dom.stopwatchBadge) {
+            this.dom.stopwatchBadge.addEventListener("click", () => {
+                if (this.timerInterval || this.isPaused || this.elapsedOffsetMs > 0) {
+                    this.togglePause();
                 }
             });
         }
@@ -507,10 +532,19 @@ class ElementSpellerGame {
     startPuzzle(dateStr, isPractice = false) {
         this.isPractice = isPractice;
         this.isGameOver = false;
+        this.isPaused = false;
         this.currentWordIdx = 0;
         this.solveTimeMs = null;
         this.elapsedOffsetMs = 0;
         this.stopSolveTimer();
+
+        if (this.dom.pauseOverlay) this.dom.pauseOverlay.style.display = "none";
+        if (this.dom.pauseBtn) {
+            this.dom.pauseBtn.classList.remove("is-paused");
+            this.dom.pauseBtn.disabled = false;
+        }
+        if (this.dom.pauseBtnIcon) this.dom.pauseBtnIcon.textContent = "⏸️";
+        if (this.dom.pauseBtnText) this.dom.pauseBtnText.textContent = "Pause";
 
         if (this.dom.undoBtn) this.dom.undoBtn.disabled = true;
         if (this.dom.clearWordBtn) this.dom.clearWordBtn.disabled = true;
@@ -763,6 +797,88 @@ class ElementSpellerGame {
         const secs = Math.floor(totalSec % 60);
         const tenths = Math.floor((totalSec * 10) % 10);
         return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}.${tenths}`;
+    }
+
+    togglePause() {
+        if (this.isGameOver) return;
+        if (this.isPaused) {
+            this.resumeGame();
+        } else {
+            this.pauseGame();
+        }
+    }
+
+    pauseGame() {
+        if (this.isGameOver || this.isPaused) return;
+
+        // Freeze elapsed time
+        if (this.startTime) {
+            this.elapsedOffsetMs = Date.now() - this.startTime;
+        }
+        this.stopSolveTimer();
+        this.isPaused = true;
+
+        if (this.dom.liveTimerDisplay) {
+            this.dom.liveTimerDisplay.textContent = this.formatElapsed(this.elapsedOffsetMs);
+        }
+
+        // Show pause overlay over word area
+        if (this.dom.pauseOverlay) {
+            this.dom.pauseOverlay.style.display = "flex";
+        }
+
+        // Update pause button styling and text
+        if (this.dom.pauseBtn) {
+            this.dom.pauseBtn.classList.add("is-paused");
+            this.dom.pauseBtn.title = "Resume game";
+        }
+        if (this.dom.pauseBtnIcon) this.dom.pauseBtnIcon.textContent = "▶️";
+        if (this.dom.pauseBtnText) this.dom.pauseBtnText.textContent = "Resume";
+
+        // Lock inputs while paused
+        if (this.dom.elementInput) this.dom.elementInput.disabled = true;
+        if (this.dom.submitBtn) this.dom.submitBtn.disabled = true;
+        this.updateButtonsState();
+
+        this.dom.statusMessage.textContent = "⏸️ Game paused. Tap Resume to continue!";
+        this.dom.statusMessage.className = "info";
+
+        this.saveCurrentProgress();
+    }
+
+    resumeGame() {
+        if (this.isGameOver || !this.isPaused) return;
+        this.isPaused = false;
+
+        // Hide pause overlay
+        if (this.dom.pauseOverlay) {
+            this.dom.pauseOverlay.style.display = "none";
+        }
+
+        // Reset pause button state
+        if (this.dom.pauseBtn) {
+            this.dom.pauseBtn.classList.remove("is-paused");
+            this.dom.pauseBtn.title = "Pause game & timer";
+        }
+        if (this.dom.pauseBtnIcon) this.dom.pauseBtnIcon.textContent = "⏸️";
+        if (this.dom.pauseBtnText) this.dom.pauseBtnText.textContent = "Pause";
+
+        // Resume timer from where it was paused
+        this.startSolveTimer(this.elapsedOffsetMs);
+
+        // Re-enable input if current word is not solved
+        const currentWordState = this.wordStates[this.currentWordIdx];
+        if (!currentWordState || !currentWordState.isSolved) {
+            if (this.dom.elementInput) {
+                this.dom.elementInput.disabled = false;
+                this.dom.elementInput.focus();
+            }
+            if (this.dom.submitBtn) this.dom.submitBtn.disabled = false;
+        }
+        this.updateButtonsState();
+
+        this.dom.statusMessage.textContent = `▶️ Game resumed! Spelling Word #${this.currentWordIdx + 1} ("${this.currentWord}").`;
+        this.dom.statusMessage.className = "info";
     }
 
     getMatchedPrefixLength() {
@@ -1160,7 +1276,7 @@ class ElementSpellerGame {
 
     updateButtonsState() {
         const isCurrentSolved = this.wordStates[this.currentWordIdx]?.isSolved;
-        const hasPlaced = this.placedElements.length > 0 && !this.isGameOver && !isCurrentSolved;
+        const hasPlaced = this.placedElements.length > 0 && !this.isGameOver && !isCurrentSolved && !this.isPaused;
 
         if (this.dom.undoBtn) {
             this.dom.undoBtn.disabled = !hasPlaced;
@@ -1169,7 +1285,10 @@ class ElementSpellerGame {
             this.dom.clearWordBtn.disabled = !hasPlaced;
         }
         if (this.dom.hintBtn) {
-            this.dom.hintBtn.disabled = (this.isGameOver || isCurrentSolved);
+            this.dom.hintBtn.disabled = (this.isGameOver || isCurrentSolved || this.isPaused);
+        }
+        if (this.dom.pauseBtn) {
+            this.dom.pauseBtn.disabled = this.isGameOver;
         }
     }
 
@@ -1199,6 +1318,9 @@ class ElementSpellerGame {
 
     handleGuess(directInput = null) {
         if (this.isGameOver) return;
+        if (this.isPaused) {
+            this.resumeGame();
+        }
         const currentWordState = this.wordStates[this.currentWordIdx];
         if (currentWordState && currentWordState.isSolved) {
             this.goToNextUnsolvedWord();
@@ -1315,6 +1437,9 @@ class ElementSpellerGame {
 
     handleFullVictory() {
         this.isGameOver = true;
+        this.isPaused = false;
+        if (this.dom.pauseOverlay) this.dom.pauseOverlay.style.display = "none";
+        if (this.dom.pauseBtn) this.dom.pauseBtn.disabled = true;
         this.stopSolveTimer();
         this.solveTimeMs = Math.max(100, Date.now() - this.startTime);
 
@@ -1451,11 +1576,21 @@ class ElementSpellerGame {
 
         this.isGameOver = false;
         this.isWordRevealed = true;
+        this.isPaused = false;
         this.currentWordIdx = 0;
         this.solveTimeMs = null;
         this.elapsedOffsetMs = 0;
         this.stopSolveTimer();
         this.dom.liveTimerDisplay.textContent = "00:00.0";
+
+        if (this.dom.pauseOverlay) this.dom.pauseOverlay.style.display = "none";
+        if (this.dom.pauseBtn) {
+            this.dom.pauseBtn.classList.remove("is-paused");
+            this.dom.pauseBtn.title = "Pause game & timer";
+            this.dom.pauseBtn.disabled = false;
+        }
+        if (this.dom.pauseBtnIcon) this.dom.pauseBtnIcon.textContent = "⏸️";
+        if (this.dom.pauseBtnText) this.dom.pauseBtnText.textContent = "Pause";
 
         // Reset all word states
         this.wordStates = this.dailyWords.map(word => ({
