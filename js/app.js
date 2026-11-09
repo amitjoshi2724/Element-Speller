@@ -1,5 +1,4 @@
 import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js";
-import { solveWord } from "./speller.js";
 import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate } from "./prng.js";
 import {
     getStats,
@@ -523,8 +522,56 @@ class ElementSpellerGame {
             this.dom.modeTitle.textContent = "Element-Speller (Practice)";
         } else {
             this.currentDateStr = dateStr;
+            const existingRecord = getRecordForDate(dateStr);
+            const isLegacySingleWord = existingRecord && existingRecord.won &&
+                (!existingRecord.wordRecords || !Array.isArray(existingRecord.wordRecords) || existingRecord.wordRecords.length <= 1);
+
+            if (isLegacySingleWord) {
+                // Legacy 1-word puzzle completed in the past
+                this.dailyWords = [existingRecord.word];
+                this.puzzleNumber = existingRecord.puzzleNum || getPuzzleNumber(dateStr);
+                this.dom.puzzleTitle.textContent = `📅 Past Puzzle #${this.puzzleNumber} • ${dateStr} • 1 Word (Classic)`;
+                this.dom.modeTitle.textContent = `Element-Speller #${this.puzzleNumber}`;
+
+                const userTiles = (existingRecord.elementsUsed || []).map(e => {
+                    const canonical = symbolToData[e.symbol?.toLowerCase()];
+                    return canonical ? { ...canonical } : { symbol: e.symbol, name: e.name || e.symbol, number: e.number || "" };
+                });
+
+                this.wordStates = [{
+                    word: existingRecord.word,
+                    placedElements: userTiles,
+                    isSolved: true,
+                    solveTimeMs: existingRecord.solveTimeMs || null
+                }];
+
+                this.isWordRevealed = true;
+                this.isGameOver = true;
+                this.solveTimeMs = existingRecord.solveTimeMs || 0;
+
+                this.updateModeUI(true);
+                this.renderWordPicker();
+                this.renderTargetWord();
+                this.renderElementSlots();
+                this.renderSolvedCardBreakdown();
+
+                this.dom.liveTimerDisplay.textContent = this.formatElapsed(this.solveTimeMs);
+                this.dom.statusMessage.textContent = `⭐ Solved on this date in ${formatTimeMs(this.solveTimeMs)}! Classic single-word puzzle complete.`;
+                this.dom.statusMessage.className = "success";
+
+                if (this.dom.solvedCard) {
+                    this.dom.solvedCard.style.display = "block";
+                    this.dom.solvedTimeStat.textContent = `Solved in ${formatTimeMs(this.solveTimeMs)}`;
+                }
+                if (this.dom.inputGroupArea) this.dom.inputGroupArea.style.display = "none";
+                return;
+            }
+
+            // Normal 6-word daily puzzle
             puzzleInfo = getDailyWords(dateStr, 6);
-            this.dailyWords = puzzleInfo.words;
+            this.dailyWords = (existingRecord && existingRecord.words && existingRecord.words.length === 6)
+                ? existingRecord.words
+                : puzzleInfo.words;
             this.puzzleNumber = puzzleInfo.puzzleNumber;
 
             const isToday = dateStr === this.todayStr;
@@ -532,9 +579,43 @@ class ElementSpellerGame {
                 ? `📅 Daily Puzzle #${this.puzzleNumber} • ${dateStr} • 6 Words`
                 : `📅 Past Puzzle #${this.puzzleNumber} • ${dateStr} • 6 Words`;
             this.dom.modeTitle.textContent = `Element-Speller #${this.puzzleNumber}`;
+
+            if (existingRecord && existingRecord.won && existingRecord.wordRecords && existingRecord.wordRecords.length > 1) {
+                // Completed 6-word puzzle: load the user's exact placed elements
+                this.isWordRevealed = true;
+                this.isGameOver = true;
+                this.solveTimeMs = existingRecord.solveTimeMs || 0;
+
+                this.wordStates = existingRecord.wordRecords.map(rec => ({
+                    word: rec.word,
+                    placedElements: (rec.placedElements || []).map(e => {
+                        const canonical = symbolToData[e.symbol?.toLowerCase()];
+                        return canonical ? { ...canonical } : { symbol: e.symbol, name: e.name || e.symbol, number: e.number || "" };
+                    }),
+                    isSolved: true,
+                    solveTimeMs: rec.solveTimeMs || null
+                }));
+
+                this.updateModeUI(true);
+                this.renderWordPicker();
+                this.renderTargetWord();
+                this.renderElementSlots();
+                this.renderSolvedCardBreakdown();
+
+                this.dom.liveTimerDisplay.textContent = this.formatElapsed(this.solveTimeMs);
+                this.dom.statusMessage.textContent = `⭐ Solved on this date in ${formatTimeMs(this.solveTimeMs)}! All 6 words complete.`;
+                this.dom.statusMessage.className = "success";
+
+                if (this.dom.solvedCard) {
+                    this.dom.solvedCard.style.display = "block";
+                    this.dom.solvedTimeStat.textContent = `Best Time: ${formatTimeMs(this.solveTimeMs)}`;
+                }
+                if (this.dom.inputGroupArea) this.dom.inputGroupArea.style.display = "none";
+                return;
+            }
         }
 
-        // Initialize word states for the 6 words
+        // Initialize word states for the puzzle words
         this.wordStates = this.dailyWords.map(word => ({
             word,
             placedElements: [],
@@ -544,46 +625,18 @@ class ElementSpellerGame {
 
         this.updateModeUI(true);
 
-        // Check if full puzzle was completed previously on this date
-        const existingRecord = !isPractice ? getRecordForDate(dateStr) : null;
-        if (existingRecord && existingRecord.won) {
-            this.isWordRevealed = true;
-            this.isGameOver = true;
-            this.solveTimeMs = existingRecord.solveTimeMs || 0;
-
-            // Restore solved breakdown if stored or solve each word
-            this.dailyWords.forEach((word, i) => {
-                const recElem = existingRecord.wordRecords?.[i]?.placedElements;
-                const solvedTiles = recElem || solveWord(word) || [];
-                this.wordStates[i] = {
-                    word,
-                    placedElements: solvedTiles,
-                    isSolved: true,
-                    solveTimeMs: existingRecord.wordRecords?.[i]?.solveTimeMs || null
-                };
-            });
-
-            this.renderWordPicker();
-            this.renderTargetWord();
-            this.renderElementSlots();
-            this.renderSolvedCardBreakdown();
-
-            this.dom.liveTimerDisplay.textContent = this.formatElapsed(this.solveTimeMs);
-            this.dom.statusMessage.textContent = `⭐ Solved on this date in ${formatTimeMs(this.solveTimeMs)}! All 6 words complete.`;
-            this.dom.statusMessage.className = "success";
-
-            if (this.dom.solvedCard) {
-                this.dom.solvedCard.style.display = "block";
-                this.dom.solvedTimeStat.textContent = `Best Time: ${formatTimeMs(this.solveTimeMs)}`;
-            }
-            if (this.dom.inputGroupArea) this.dom.inputGroupArea.style.display = "none";
-            return;
-        }
-
         // Check for partial saved progress on today's puzzle
         const savedProgress = !isPractice ? loadDailyProgress(dateStr) : null;
-        if (savedProgress && savedProgress.wordStates && savedProgress.wordStates.length === 6) {
-            this.wordStates = savedProgress.wordStates;
+        if (savedProgress && savedProgress.wordStates && savedProgress.wordStates.length === this.dailyWords.length) {
+            this.wordStates = savedProgress.wordStates.map(ws => ({
+                word: ws.word,
+                placedElements: (ws.placedElements || []).map(e => {
+                    const canonical = symbolToData[e.symbol?.toLowerCase()];
+                    return canonical ? { ...canonical } : { symbol: e.symbol, name: e.name || e.symbol, number: e.number || "" };
+                }),
+                isSolved: !!ws.isSolved,
+                solveTimeMs: ws.solveTimeMs || null
+            }));
             this.currentWordIdx = savedProgress.currentWordIdx || 0;
             this.elapsedOffsetMs = savedProgress.elapsedTimeMs || 0;
             this.isWordRevealed = true;
@@ -602,7 +655,7 @@ class ElementSpellerGame {
 
             this.startSolveTimer(this.elapsedOffsetMs);
             const solvedCount = this.wordStates.filter(s => s.isSolved).length;
-            this.dom.statusMessage.textContent = `Resumed puzzle! ${solvedCount}/6 words solved. Enter elements to continue.`;
+            this.dom.statusMessage.textContent = `Resumed puzzle! ${solvedCount}/${this.dailyWords.length} words solved. Enter elements to continue.`;
             this.dom.statusMessage.className = "info";
             return;
         }
@@ -645,7 +698,10 @@ class ElementSpellerGame {
         }
 
         this.startSolveTimer(this.elapsedOffsetMs);
-        this.dom.statusMessage.textContent = `Timer running! Spell Word 1 of 6 ("${this.currentWord}").`;
+        const count = this.dailyWords.length;
+        this.dom.statusMessage.textContent = count > 1
+            ? `Timer running! Spell Word 1 of ${count} ("${this.currentWord}").`
+            : `Timer running! Spell "${this.currentWord}".`;
         this.dom.statusMessage.className = "info";
     }
 
@@ -695,11 +751,15 @@ class ElementSpellerGame {
         this.dom.wordPillsRow.innerHTML = "";
 
         const solvedCount = this.wordStates.filter(s => s.isSolved).length;
+        const totalWords = this.dailyWords.length;
         if (this.dom.wordsSolvedCounter) {
-            this.dom.wordsSolvedCounter.textContent = `${solvedCount} / ${this.dailyWords.length} Solved`;
+            this.dom.wordsSolvedCounter.textContent = `${solvedCount} / ${totalWords} Solved`;
         }
         if (this.dom.currentWordNum) {
             this.dom.currentWordNum.textContent = String(this.currentWordIdx + 1);
+        }
+        if (this.dom.wordPickerLabel) {
+            this.dom.wordPickerLabel.innerHTML = `Word <strong id="current-word-num">${this.currentWordIdx + 1}</strong> of ${totalWords}`;
         }
 
         for (let i = 0; i < this.dailyWords.length; i++) {
@@ -780,9 +840,13 @@ class ElementSpellerGame {
         if (!this.dom.targetWordDisplay) return;
 
         if (!this.isWordRevealed) {
-            const btnLabel = this.isPractice ? "▶️ Reveal 6 Practice Words & Start Timer" : "▶️ Reveal 6 Daily Words & Start Timer";
+            const count = this.dailyWords.length;
+            const countStr = count > 1 ? `${count} ` : "";
+            const btnLabel = this.isPractice
+                ? `▶️ Reveal ${countStr}Practice Words & Start Timer`
+                : `▶️ Reveal ${countStr}Daily Words & Start Timer`;
             this.dom.targetWordDisplay.innerHTML = `
-                <button id="reveal-word-btn" class="reveal-word-btn" title="Reveal the 6 words and start the solve timer">
+                <button id="reveal-word-btn" class="reveal-word-btn" title="Reveal the words and start the solve timer">
                     <span class="reveal-icon">👁️</span>
                     <span>${btnLabel}</span>
                 </button>
@@ -1112,25 +1176,39 @@ class ElementSpellerGame {
         this.stopSolveTimer();
         this.solveTimeMs = Math.max(100, Date.now() - this.startTime);
 
+        const totalWords = this.dailyWords.length;
         if (!this.isPractice) {
             recordCompletion(
                 this.currentDateStr,
                 this.puzzleNumber,
                 this.dailyWords,
                 true,
-                this.wordStates,
+                this.wordStates.map(ws => ({
+                    word: ws.word,
+                    placedElements: (ws.placedElements || []).map(e => ({
+                        symbol: e.symbol,
+                        name: e.name,
+                        number: e.number
+                    })),
+                    isSolved: ws.isSolved,
+                    solveTimeMs: ws.solveTimeMs
+                })),
                 this.solveTimeMs
             );
             clearDailyProgress(this.currentDateStr);
         }
 
         const formatted = formatTimeMs(this.solveTimeMs);
-        this.dom.statusMessage.textContent = `🎉 Fantastic! All 6 words solved in ${formatted}!`;
+        this.dom.statusMessage.textContent = totalWords > 1
+            ? `🎉 Fantastic! All ${totalWords} words solved in ${formatted}!`
+            : `🎉 Fantastic! Word solved in ${formatted}!`;
         this.dom.statusMessage.className = "success";
 
         if (this.dom.solvedCard) {
             this.dom.solvedCard.style.display = "block";
-            this.dom.solvedTimeStat.textContent = `All 6 Words Solved in ${formatted}`;
+            this.dom.solvedTimeStat.textContent = totalWords > 1
+                ? `All ${totalWords} Words Solved in ${formatted}`
+                : `Solved in ${formatted}`;
             this.renderSolvedCardBreakdown();
         }
 
@@ -1155,11 +1233,14 @@ class ElementSpellerGame {
         if (!this.dom.solvedWordsBreakdown) return;
         this.dom.solvedWordsBreakdown.innerHTML = this.dailyWords.map((word, i) => {
             const state = this.wordStates[i];
-            const elems = state?.placedElements || solveWord(word) || [];
-            const chipsHtml = elems.map(e => `<span class="solved-breakdown-chip">[${e.symbol}]</span>`).join("");
+            const elems = state?.placedElements || [];
+            const chipsHtml = elems.length > 0
+                ? elems.map(e => `<span class="solved-breakdown-chip">[${e.symbol}]</span>`).join("")
+                : `<span style="color: #888; font-style: italic;">Solved</span>`;
+            const prefix = this.dailyWords.length > 1 ? `${i + 1}. ` : "";
             return `
                 <div class="solved-breakdown-item">
-                    <span class="solved-breakdown-word">${i + 1}. ${word}</span>
+                    <span class="solved-breakdown-word">${prefix}${word}</span>
                     <div class="solved-breakdown-elements">${chipsHtml}</div>
                 </div>
             `;
@@ -1216,6 +1297,13 @@ class ElementSpellerGame {
         if (!this.isPractice && this.currentDateStr) {
             await resetDailyGameResult(this.currentDateStr);
             clearDailyProgress(this.currentDateStr);
+            const pInfo = getDailyWords(this.currentDateStr, 6);
+            this.dailyWords = pInfo.words;
+            this.puzzleNumber = pInfo.puzzleNumber;
+            const isToday = this.currentDateStr === this.todayStr;
+            this.dom.puzzleTitle.textContent = isToday
+                ? `📅 Daily Puzzle #${this.puzzleNumber} • ${this.currentDateStr} • 6 Words`
+                : `📅 Past Puzzle #${this.puzzleNumber} • ${this.currentDateStr} • 6 Words`;
         }
 
         this.isGameOver = false;
@@ -1226,7 +1314,7 @@ class ElementSpellerGame {
         this.stopSolveTimer();
         this.dom.liveTimerDisplay.textContent = "00:00.0";
 
-        // Reset all 6 word states
+        // Reset all word states
         this.wordStates = this.dailyWords.map(word => ({
             word,
             placedElements: [],
@@ -1253,7 +1341,9 @@ class ElementSpellerGame {
             this.dom.submitBtn.disabled = true;
         }
 
-        this.dom.statusMessage.textContent = "Puzzle reset! Click 'Reveal 6 Words & Start Timer' whenever you are ready.";
+        const count = this.dailyWords.length;
+        const countStr = count > 1 ? `${count} ` : "";
+        this.dom.statusMessage.textContent = `Puzzle reset! Click 'Reveal ${countStr}Words & Start Timer' whenever you are ready.`;
         this.dom.statusMessage.className = "info";
 
         if (this.dom.archiveModal.classList.contains("active")) {
@@ -1265,9 +1355,19 @@ class ElementSpellerGame {
     saveCurrentProgress() {
         if (this.isPractice || !this.currentDateStr || this.isGameOver || !this.isWordRevealed) return;
         const elapsed = this.startTime ? (Date.now() - this.startTime) : 0;
+        const cleanWordStates = this.wordStates.map(ws => ({
+            word: ws.word,
+            placedElements: (ws.placedElements || []).map(e => ({
+                symbol: e.symbol,
+                name: e.name,
+                number: e.number
+            })),
+            isSolved: !!ws.isSolved,
+            solveTimeMs: ws.solveTimeMs || null
+        }));
         saveDailyProgress(this.currentDateStr, {
             currentWordIdx: this.currentWordIdx,
-            wordStates: this.wordStates,
+            wordStates: cleanWordStates,
             elapsedTimeMs: elapsed
         });
     }
@@ -1325,11 +1425,12 @@ class ElementSpellerGame {
         }
 
         if (this.dom.statsPuzzleStatus) {
+            const totalWords = this.dailyWords.length;
             if (isSolved) {
-                this.dom.statsPuzzleStatus.textContent = "🎉 All 6 words solved!";
+                this.dom.statsPuzzleStatus.textContent = totalWords > 1 ? `🎉 All ${totalWords} words solved!` : "🎉 Word solved!";
             } else if (this.isWordRevealed) {
                 const solvedCount = this.wordStates.filter(s => s.isSolved).length;
-                this.dom.statsPuzzleStatus.textContent = `${solvedCount} of 6 words solved`;
+                this.dom.statsPuzzleStatus.textContent = `${solvedCount} of ${totalWords} words solved`;
             } else {
                 this.dom.statsPuzzleStatus.textContent = "Click 'Reveal' to begin playing!";
             }
@@ -1337,7 +1438,11 @@ class ElementSpellerGame {
     }
 
     copyShareCard(withSpoiler = false, targetBtn = null) {
-        const puzzleTag = this.isPractice ? "Element-Speller Practice" : `Element-Speller #${this.puzzleNumber}`;
+        const totalWords = this.dailyWords.length || 6;
+        const isMulti = totalWords > 1;
+        const puzzleTag = this.isPractice
+            ? "Element-Speller Practice"
+            : (isMulti ? `Element-Speller #${this.puzzleNumber} (${totalWords} Words)` : `Element-Speller #${this.puzzleNumber}`);
         const dateKey = this.currentDateStr || this.todayStr;
         const rec = (!this.isPractice && dateKey) ? getRecordForDate(dateKey) : null;
         const solveMs = (this.solveTimeMs && this.solveTimeMs > 0)
@@ -1347,12 +1452,13 @@ class ElementSpellerGame {
         const isSolved = this.isGameOver || (rec && rec.won);
         const solvedCount = (this.wordStates && this.wordStates.length > 0)
             ? this.wordStates.filter(s => s.isSolved).length
-            : (isSolved ? 6 : 0);
-        const totalWords = this.dailyWords.length || 6;
+            : (isSolved ? totalWords : 0);
 
         let timeHeader;
         if (solveMs) {
-            timeHeader = `⏱️ Time: ${formatTimeMs(solveMs)} (${solvedCount}/${totalWords} Solved)`;
+            timeHeader = isMulti
+                ? `⏱️ Time: ${formatTimeMs(solveMs)} (${solvedCount}/${totalWords} Solved)`
+                : `⏱️ Solved in ${formatTimeMs(solveMs)}`;
         } else if (this.isWordRevealed && !this.isGameOver) {
             timeHeader = `⏱️ In Progress (${solvedCount}/${totalWords} Solved)`;
         } else {
@@ -1364,23 +1470,23 @@ class ElementSpellerGame {
             lines = this.dailyWords.map((word, i) => {
                 const state = this.wordStates[i];
                 if ((state && state.isSolved) || isSolved) {
-                    const elems = state?.placedElements || rec?.wordRecords?.[i]?.placedElements || solveWord(word) || [];
+                    const elems = state?.placedElements || rec?.wordRecords?.[i]?.placedElements || (totalWords === 1 ? rec?.elementsUsed : []) || [];
                     const boxes = elems.map(e => `[${e.symbol}]`).join(" ");
-                    return `${i + 1}. ${word}: ${boxes}`;
+                    return isMulti ? `${i + 1}. ${word}: ${boxes}` : `${word}: ${boxes}`;
                 } else {
-                    return `${i + 1}. ${word}: In Progress`;
+                    return isMulti ? `${i + 1}. ${word}: In Progress` : `${word}: In Progress`;
                 }
             });
         } else {
             lines = this.dailyWords.map((word, i) => {
                 const state = this.wordStates[i];
                 if ((state && state.isSolved) || isSolved) {
-                    const elems = state?.placedElements || rec?.wordRecords?.[i]?.placedElements || solveWord(word) || [];
-                    return `${i + 1}. ${'🟩 '.repeat(elems.length).trim()}`;
+                    const elems = state?.placedElements || rec?.wordRecords?.[i]?.placedElements || (totalWords === 1 ? rec?.elementsUsed : []) || [];
+                    const count = Math.max(1, elems.length);
+                    return isMulti ? `${i + 1}. ${'🟩 '.repeat(count).trim()}` : `${'🟩 '.repeat(count).trim()}`;
                 } else {
-                    const solution = solveWord(word) || [];
-                    const len = solution.length || Math.ceil(word.length / 2);
-                    return `${i + 1}. ${'⬜ '.repeat(len).trim()}`;
+                    const len = Math.max(1, Math.ceil(word.length / 2));
+                    return isMulti ? `${i + 1}. ${'⬜ '.repeat(len).trim()}` : `${'⬜ '.repeat(len).trim()}`;
                 }
             });
         }
@@ -1614,8 +1720,15 @@ class ElementSpellerGame {
         }
 
         container.innerHTML = items.map(item => {
-            const badgeClass = item.isSolved ? "archive-status-badge won" : "archive-status-badge unplayed";
-            const badgeText = item.isSolved ? `⭐ Solved 6/6 (${formatTimeMs(item.record.solveTimeMs)})` : "⚪ Unplayed";
+            const isSolved = item.isSolved;
+            const badgeClass = isSolved ? "archive-status-badge won" : "archive-status-badge unplayed";
+            let badgeText = "⚪ Unplayed";
+            if (isSolved) {
+                const rec = item.record;
+                const isMulti = rec && rec.wordRecords && Array.isArray(rec.wordRecords) && rec.wordRecords.length > 1;
+                const count = isMulti ? rec.wordRecords.length : 1;
+                badgeText = `⭐ Solved ${count}/${count} (${formatTimeMs(rec.solveTimeMs)})`;
+            }
             return `
                 <div class="archive-item">
                     <div class="archive-meta">
@@ -1624,7 +1737,7 @@ class ElementSpellerGame {
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span class="${badgeClass}">${badgeText}</span>
-                        <button class="archive-play-btn" data-date="${item.dateStr}">Play</button>
+                        <button class="archive-play-btn" data-date="${item.dateStr}">${isSolved ? "Review" : "Play"}</button>
                     </div>
                 </div>
             `;

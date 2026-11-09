@@ -255,13 +255,16 @@ export function clearDailyProgress(dateStr) {
 
 export function recordCompletion(dateStr, puzzleNum, wordOrWords, won, elementsUsedOrWordRecords, solveTimeMs) {
     const existing = memoryHistory[dateStr];
-    // If previously completed, preserve best time
+    const isArrayWords = Array.isArray(wordOrWords);
+    const incomingCount = isArrayWords ? wordOrWords.length : 1;
+    const existingCount = existing?.wordRecords?.length || (existing?.won ? 1 : 0);
+
+    // If previously completed with the exact same word count, preserve best time
     let finalSolveTime = solveTimeMs;
-    if (existing && existing.won && existing.solveTimeMs) {
+    if (existing && existing.won && existing.solveTimeMs && existingCount === incomingCount) {
         finalSolveTime = Math.min(existing.solveTimeMs, solveTimeMs);
     }
 
-    const isArrayWords = Array.isArray(wordOrWords);
     const words = isArrayWords ? wordOrWords : [wordOrWords];
     const primaryWord = isArrayWords ? wordOrWords[0] : wordOrWords;
 
