@@ -246,6 +246,12 @@ export class PeriodicTable {
         }
     }
 
+    findElementBySymbol(symbol) {
+        if (!symbol) return null;
+        const symUpper = symbol.trim().toUpperCase();
+        return PERIODIC_ELEMENTS.find(e => e.s.toUpperCase() === symUpper) || null;
+    }
+
     selectElement(elem, data = null) {
         this.selectedElement = elem;
         const info = data || elementData[elem.s] || { name: elem.s, number: elem.n };

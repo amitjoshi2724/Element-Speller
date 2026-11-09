@@ -118,7 +118,7 @@ class ElementSpellerGame {
             elementInput: document.getElementById("element-input"),
             submitBtn: document.getElementById("submit-element-btn"),
             statusMessage: document.getElementById("status-message"),
-            elementDetails: document.getElementById("element-details"),
+            elementDetails: document.getElementById("pt-inspect-card") || document.getElementById("element-details"),
             modeTitle: document.getElementById("mode-title-text"),
             liveTimerDisplay: document.getElementById("live-timer-display"),
             stopwatchBadge: document.getElementById("stopwatch-badge"),
@@ -155,13 +155,21 @@ class ElementSpellerGame {
             // Periodic table section on main screen
             periodicTableSection: document.getElementById("periodic-table-section"),
             openTableBtn: document.getElementById("open-table-btn"),
+            ptToggleBtn: document.getElementById("pt-toggle-btn"),
+            ptContentBody: document.getElementById("pt-content-body"),
+            ptToggleIcon: document.getElementById("pt-toggle-icon"),
+            ptToggleLabel: document.getElementById("pt-toggle-label"),
 
             // Stats elements
             statPlayed: document.getElementById("stat-played"),
             statWinPct: document.getElementById("stat-win-pct"),
             statStreak: document.getElementById("stat-streak"),
+            statMaxStreak: document.getElementById("stat-max-streak"),
             statBestTime: document.getElementById("stat-best-time"),
-            distBarsContainer: document.getElementById("dist-bars-container"),
+            statAvgTime: document.getElementById("stat-avg-time"),
+            statsPuzzleTitle: document.getElementById("stats-puzzle-summary-title"),
+            statsPuzzleTime: document.getElementById("stats-puzzle-summary-time"),
+            statsPuzzleStatus: document.getElementById("stats-puzzle-summary-status"),
             nextCountdown: document.getElementById("next-countdown-val"),
             statsShareNoSpoilerBtn: document.getElementById("stats-share-no-spoiler-btn"),
             statsShareSpoilerBtn: document.getElementById("stats-share-spoiler-btn"),
@@ -374,6 +382,17 @@ class ElementSpellerGame {
                 if (this.dom.periodicTableSection) {
                     this.dom.periodicTableSection.scrollIntoView({ behavior: "smooth" });
                 }
+            });
+        }
+
+        // Periodic table collapse / expand toggle
+        if (this.dom.ptToggleBtn && this.dom.ptContentBody) {
+            this.dom.ptToggleBtn.addEventListener("click", () => {
+                const isCurrentlyHidden = this.dom.ptContentBody.style.display === "none";
+                this.dom.ptContentBody.style.display = isCurrentlyHidden ? "block" : "none";
+                this.dom.ptToggleBtn.setAttribute("aria-expanded", isCurrentlyHidden ? "true" : "false");
+                if (this.dom.ptToggleIcon) this.dom.ptToggleIcon.textContent = isCurrentlyHidden ? "▾" : "▴";
+                if (this.dom.ptToggleLabel) this.dom.ptToggleLabel.textContent = isCurrentlyHidden ? "Hide Table" : "Show Table";
             });
         }
 
@@ -599,7 +618,7 @@ class ElementSpellerGame {
         if (this.dom.elementInput) {
             this.dom.elementInput.value = "";
             this.dom.elementInput.disabled = true;
-            this.dom.elementInput.placeholder = "Click 'Reveal 6 Words & Start Timer' above to begin...";
+            this.dom.elementInput.placeholder = "Click 'Reveal' above to begin spelling...";
         }
         if (this.dom.submitBtn) {
             this.dom.submitBtn.disabled = true;
@@ -1235,7 +1254,7 @@ class ElementSpellerGame {
         if (this.dom.elementInput) {
             this.dom.elementInput.value = "";
             this.dom.elementInput.disabled = true;
-            this.dom.elementInput.placeholder = "Click 'Reveal 6 Words & Start Timer' above to begin...";
+            this.dom.elementInput.placeholder = "Click 'Reveal' above to begin spelling...";
         }
         if (this.dom.submitBtn) {
             this.dom.submitBtn.disabled = true;
@@ -1261,15 +1280,13 @@ class ElementSpellerGame {
     }
 
     showElementDetails(elem) {
-        if (!this.dom.elementDetails || !elem) return;
-        this.dom.elementDetails.classList.add("active");
-        this.dom.elementDetails.innerHTML = `
-            <div class="big-element">
-                <div class="element-symbol">${elem.symbol}</div>
-                <div class="element-name">${elem.name}</div>
-                <div class="element-number">Atomic Number: ${elem.number}</div>
-            </div>
-        `;
+        if (!elem) return;
+        if (this.periodicTable) {
+            const pElem = this.periodicTable.findElementBySymbol(elem.symbol);
+            if (pElem) {
+                this.periodicTable.selectElement(pElem);
+            }
+        }
     }
 
     openModal(modal) {
@@ -1285,46 +1302,76 @@ class ElementSpellerGame {
         if (this.dom.statPlayed) this.dom.statPlayed.textContent = stats.played;
         if (this.dom.statWinPct) this.dom.statWinPct.textContent = stats.played > 0 ? `${Math.round((stats.won / stats.played) * 100)}%` : "0%";
         if (this.dom.statStreak) this.dom.statStreak.textContent = stats.currentStreak;
+        if (this.dom.statMaxStreak) this.dom.statMaxStreak.textContent = stats.maxStreak || stats.currentStreak || 0;
         if (this.dom.statBestTime) this.dom.statBestTime.textContent = formatTimeMs(stats.bestTimeMs);
+        if (this.dom.statAvgTime) {
+            const avgMs = (stats.won > 0 && stats.totalTimeMs) ? Math.round(stats.totalTimeMs / stats.won) : null;
+            this.dom.statAvgTime.textContent = formatTimeMs(avgMs);
+        }
 
-        // Render Solve Time Distribution
-        if (this.dom.distBarsContainer) {
-            const dist = stats.distribution || {};
-            const maxCount = Math.max(1, ...Object.values(dist));
-            const bins = ["< 10s", "10-20s", "20-30s", "30-60s", "1-2m", "> 2m"];
-            const currentBin = this.isGameOver && this.solveTimeMs ? getTimeBin(this.solveTimeMs) : null;
+        // Current / Selected Puzzle Status in Stats Modal
+        if (this.dom.statsPuzzleTitle) {
+            this.dom.statsPuzzleTitle.textContent = this.isPractice ? "Practice Puzzle" : `Daily Puzzle #${this.puzzleNumber}`;
+        }
 
-            this.dom.distBarsContainer.innerHTML = bins.map(bin => {
-                const count = dist[bin] || 0;
-                const pct = count > 0 ? Math.max(12, Math.round((count / maxCount) * 100)) : 0;
-                const isCurrent = (!this.isPractice && this.isGameOver && currentBin === bin);
-                const fillClass = count > 0 ? (isCurrent ? "dist-fill highlight" : "dist-fill") : "dist-fill zero";
-                return `
-                    <div class="dist-row">
-                        <span class="dist-label">${bin}</span>
-                        <div class="dist-track">
-                            <div class="${fillClass}" style="${count > 0 ? `width: ${pct}%` : ""}">
-                                <span>${count}</span>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join("");
+        const dateKey = this.currentDateStr || this.todayStr;
+        const rec = (!this.isPractice && dateKey) ? getRecordForDate(dateKey) : null;
+        const solveMs = (this.solveTimeMs && this.solveTimeMs > 0)
+            ? this.solveTimeMs
+            : (rec && rec.solveTimeMs > 0 ? rec.solveTimeMs : null);
+        const isSolved = this.isGameOver || (rec && rec.won);
+
+        if (this.dom.statsPuzzleTime) {
+            if (isSolved && solveMs) {
+                this.dom.statsPuzzleTime.textContent = `⏱️ ${formatTimeMs(solveMs)}`;
+            } else if (this.isWordRevealed && !this.isGameOver) {
+                this.dom.statsPuzzleTime.textContent = "⏱️ In Progress";
+            } else {
+                this.dom.statsPuzzleTime.textContent = "⏱️ Not Started";
+            }
+        }
+
+        if (this.dom.statsPuzzleStatus) {
+            if (isSolved) {
+                this.dom.statsPuzzleStatus.textContent = "🎉 All 6 words solved!";
+            } else if (this.isWordRevealed) {
+                const solvedCount = this.wordStates.filter(s => s.isSolved).length;
+                this.dom.statsPuzzleStatus.textContent = `${solvedCount} of 6 words solved`;
+            } else {
+                this.dom.statsPuzzleStatus.textContent = "Click 'Reveal' to begin playing!";
+            }
         }
     }
 
     copyShareCard(withSpoiler = false, targetBtn = null) {
         const puzzleTag = this.isPractice ? "Element-Speller Practice" : `Element-Speller #${this.puzzleNumber}`;
-        const solvedCount = this.wordStates.filter(s => s.isSolved).length;
-        const totalWords = this.dailyWords.length;
-        const timeStr = this.solveTimeMs ? `⏱️ ${formatTimeMs(this.solveTimeMs)}` : "⏱️ In Progress";
+        const dateKey = this.currentDateStr || this.todayStr;
+        const rec = (!this.isPractice && dateKey) ? getRecordForDate(dateKey) : null;
+        const solveMs = (this.solveTimeMs && this.solveTimeMs > 0)
+            ? this.solveTimeMs
+            : (rec && rec.solveTimeMs > 0 ? rec.solveTimeMs : null);
+
+        const isSolved = this.isGameOver || (rec && rec.won);
+        const solvedCount = (this.wordStates && this.wordStates.length > 0)
+            ? this.wordStates.filter(s => s.isSolved).length
+            : (isSolved ? 6 : 0);
+        const totalWords = this.dailyWords.length || 6;
+
+        let timeHeader;
+        if (solveMs) {
+            timeHeader = `⏱️ Time: ${formatTimeMs(solveMs)} (${solvedCount}/${totalWords} Solved)`;
+        } else if (this.isWordRevealed && !this.isGameOver) {
+            timeHeader = `⏱️ In Progress (${solvedCount}/${totalWords} Solved)`;
+        } else {
+            timeHeader = `(${solvedCount}/${totalWords} Solved)`;
+        }
 
         let lines;
         if (withSpoiler) {
             lines = this.dailyWords.map((word, i) => {
                 const state = this.wordStates[i];
-                if (state && state.isSolved) {
-                    const elems = state.placedElements || solveWord(word) || [];
+                if ((state && state.isSolved) || isSolved) {
+                    const elems = state?.placedElements || rec?.wordRecords?.[i]?.placedElements || solveWord(word) || [];
                     const boxes = elems.map(e => `[${e.symbol}]`).join(" ");
                     return `${i + 1}. ${word}: ${boxes}`;
                 } else {
@@ -1334,8 +1381,8 @@ class ElementSpellerGame {
         } else {
             lines = this.dailyWords.map((word, i) => {
                 const state = this.wordStates[i];
-                if (state && state.isSolved) {
-                    const elems = state.placedElements || solveWord(word) || [];
+                if ((state && state.isSolved) || isSolved) {
+                    const elems = state?.placedElements || rec?.wordRecords?.[i]?.placedElements || solveWord(word) || [];
                     return `${i + 1}. ${'🟩 '.repeat(elems.length).trim()}`;
                 } else {
                     const solution = solveWord(word) || [];
@@ -1345,7 +1392,7 @@ class ElementSpellerGame {
             });
         }
 
-        const shareText = `🧪 ${puzzleTag} (${solvedCount}/${totalWords} Solved) • ${timeStr}\n${lines.join("\n")}\nhttps://amitjoshi2724.github.io/Element-Speller/`;
+        const shareText = `🧪 ${puzzleTag}\n${timeHeader}\n\n${lines.join("\n")}\n\nhttps://amitjoshi2724.github.io/Element-Speller/`;
 
         navigator.clipboard.writeText(shareText).then(() => {
             if (targetBtn) {

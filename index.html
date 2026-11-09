@@ -31,7 +31,7 @@
         </div>
         <div class="nav-links-group">
             <a href="query/index.html" class="nav-action-btn" title="Spell any custom phrase with elements">
-                <span>🔍 Custom Speller</span>
+                <span>🔍 Custom</span>
             </a>
             <div class="mode-segmented-toggle" role="group" aria-label="Game Mode">
                 <button type="button" id="mode-daily-btn" class="mode-toggle-btn active" data-mode="daily">
@@ -41,9 +41,6 @@
                     <span class="mode-icon">🎯</span> Practice
                 </button>
             </div>
-            <button id="open-table-btn" class="nav-action-btn" title="View interactive Periodic Table of Elements">
-                <span>⚛️ Periodic Table</span>
-            </button>
             <button id="open-archive-btn" class="nav-action-btn" title="Browse calendar archive of past daily puzzles">
                 <span>📅 Archive</span>
             </button>
@@ -62,14 +59,17 @@
         <div class="beaker">🧪</div>
         <h1>Element-Speller</h1>
         <div class="puzzle-meta-badge" id="puzzle-meta-badge">Loading Daily Puzzle...</div>
-        <p>Spell all 6 target words using chemical elements as fast as you can! <strong>Drag any element to the 🗑️ trash can to delete it.</strong></p>
+        <p>Spell all 6 target words using chemical elements as fast as you can! <strong>Drag any element to the 🗑️
+                trash can to delete it.</strong></p>
 
         <!-- Word Tracker Navigation Bar (6 words per puzzle) -->
         <div class="word-picker-bar" id="word-picker-bar">
             <div class="word-picker-header">
-                <span class="word-picker-label" id="word-picker-label">Word <strong id="current-word-num">1</strong> of 6</span>
+                <span class="word-picker-label" id="word-picker-label">Word <strong id="current-word-num">1</strong> of
+                    6</span>
                 <div class="word-picker-actions">
-                    <button type="button" id="next-word-quick-btn" class="word-next-btn" style="display: none;" title="Go to next unsolved word">Next Word ▶</button>
+                    <button type="button" id="next-word-quick-btn" class="word-next-btn" style="display: none;"
+                        title="Go to next unsolved word">Next Word ▶</button>
                     <span class="word-picker-progress" id="words-solved-counter">0 / 6 Solved</span>
                 </div>
             </div>
@@ -85,9 +85,12 @@
                 <span id="live-timer-display" class="live-timer-display">00:00.0</span>
             </div>
             <div class="quick-action-group">
-                <button id="undo-element-btn" class="quick-action-btn" title="Undo last element" disabled>↩️ Undo</button>
-                <button id="clear-word-btn" class="quick-action-btn" title="Clear placed elements for this word" disabled>🗑️ Clear Word</button>
-                <button id="reset-puzzle-btn" class="quick-action-btn reset" title="Reset all 6 words & restart timer">🔄 Reset All</button>
+                <button id="undo-element-btn" class="quick-action-btn" title="Undo last element" disabled>↩️
+                    Undo</button>
+                <button id="clear-word-btn" class="quick-action-btn" title="Clear placed elements for this word"
+                    disabled>🗑️ Clear Word</button>
+                <button id="reset-puzzle-btn" class="quick-action-btn reset"
+                    title="Reset all 6 words & restart timer">🔄 Reset All</button>
             </div>
         </div>
 
@@ -100,13 +103,15 @@
             </div>
 
             <!-- Trash Can Drop Zone -->
-            <div id="trash-can-zone" class="trash-can-zone" title="Drag any element card here to delete it (or click to remove last)">
+            <div id="trash-can-zone" class="trash-can-zone"
+                title="Drag any element card here to delete it (or click to remove last)">
                 <span class="trash-can-emoji">🗑️</span>
                 <span class="trash-can-label" id="trash-can-label">Drag element here to delete</span>
             </div>
 
             <div class="drag-hint-text" id="drag-hint-text">
-                <span>💡 <strong>Tip:</strong> Place elements down freely, or click any element in the ⚛️ <strong>Periodic Table below</strong>! Drag cards to reorder, or drag to 🗑️ trash to delete.</span>
+                <span>💡 <strong>Tip:</strong> Place elements down freely, or click any element in the ⚛️
+                    <strong>Periodic Table below</strong>! Drag cards to reorder, or drag to 🗑️ trash to delete.</span>
             </div>
         </div>
 
@@ -118,8 +123,10 @@
                 <!-- Solved words breakdown list -->
             </div>
             <div class="solved-btn-row">
-                <button id="share-score-no-spoiler-btn" class="share-btn" title="Share result with emoji blocks (no spoilers)">📋 Share (No Spoilers)</button>
-                <button id="share-score-spoiler-btn" class="share-btn secondary" title="Share full solution with element words">👁️ Share (With Spoilers)</button>
+                <button id="share-score-no-spoiler-btn" class="share-btn"
+                    title="Share result with emoji blocks (no spoilers)">📋 Share (No Spoilers)</button>
+                <button id="share-score-spoiler-btn" class="share-btn secondary"
+                    title="Share full solution with element words">👁️ Share (With Spoilers)</button>
                 <button id="solved-replay-btn" class="quick-action-btn reset">🔄 Retry for Faster Time</button>
             </div>
         </div>
@@ -127,7 +134,9 @@
         <!-- Element Guess Input -->
         <div class="input-group" id="input-group-area">
             <div class="input-row">
-                <input type="text" id="element-input" list="elements-datalist" placeholder="Enter element name or symbol (e.g. Carbon, C)..." autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="none" autofocus>
+                <input type="text" id="element-input" list="elements-datalist"
+                    placeholder="Enter element name or symbol (e.g. Carbon, C)..." autocomplete="off" spellcheck="false"
+                    autocorrect="off" autocapitalize="none" autofocus>
                 <datalist id="elements-datalist">
                     <!-- Populated dynamically with all 118 periodic table elements -->
                 </datalist>
@@ -137,11 +146,6 @@
 
         <div id="status-message" class="info">Enter the first element to begin spelling!</div>
 
-        <!-- Element Details Box (Preserved from original ElementSpeller) -->
-        <div id="element-details">
-            <span class="placeholder-text">Hover or click any element tile to view atomic details</span>
-        </div>
-
         <!-- Interactive Periodic Table of Elements (Directly in main game view) -->
         <section class="periodic-table-section" id="periodic-table-section" aria-label="Periodic Table of Elements">
             <div class="pt-section-header">
@@ -149,59 +153,81 @@
                     <span class="pt-icon">⚛️</span>
                     <h2 class="pt-heading">Periodic Table of Elements</h2>
                 </div>
-                <div class="pt-tip">Click any element tile to inspect, or click <strong>Place in Puzzle</strong> to add it directly to your word!</div>
+                <button type="button" id="pt-toggle-btn" class="pt-toggle-btn" aria-expanded="true"
+                    title="Toggle periodic table visibility">
+                    <span id="pt-toggle-icon">▾</span> <span id="pt-toggle-label">Hide Table</span>
+                </button>
             </div>
 
-            <div class="pt-toolbar">
-                <div class="pt-search-box">
-                    <span class="pt-search-icon">🔍</span>
-                    <input type="text" id="pt-search-input" placeholder="Search by symbol, name, or # (e.g. Fe, Iron, 26)..." autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="none">
-                    <button type="button" id="pt-search-clear" class="pt-clear-btn" style="display: none;">&times;</button>
-                </div>
-            </div>
+                    <div id="pt-content-body" class="pt-content-body">
+                        <!-- Top Controls: Search Bar & Selected Element Inspection -->
+                        <div class="pt-top-controls">
+                            <div class="pt-search-box">
+                                <span class="pt-search-icon">🔍</span>
+                                <input type="text" id="pt-search-input"
+                                    placeholder="Search element or # (e.g. Fe, Iron, 26)..." autocomplete="off"
+                                    spellcheck="false" autocorrect="off" autocapitalize="none">
+                                <button type="button" id="pt-search-clear" class="pt-clear-btn"
+                                    style="display: none;">&times;</button>
+                            </div>
 
-            <!-- Category Legend -->
-            <div class="pt-legend">
-                <span class="pt-legend-item cat-nonmetal"><span class="legend-dot"></span>Nonmetal</span>
-                <span class="pt-legend-item cat-noble-gas"><span class="legend-dot"></span>Noble Gas</span>
-                <span class="pt-legend-item cat-alkali"><span class="legend-dot"></span>Alkali Metal</span>
-                <span class="pt-legend-item cat-alkaline-earth"><span class="legend-dot"></span>Alkaline Earth</span>
-                <span class="pt-legend-item cat-metalloid"><span class="legend-dot"></span>Metalloid</span>
-                <span class="pt-legend-item cat-halogen"><span class="legend-dot"></span>Halogen</span>
-                <span class="pt-legend-item cat-transition"><span class="legend-dot"></span>Transition</span>
-                <span class="pt-legend-item cat-post-transition"><span class="legend-dot"></span>Post-Transition</span>
-                <span class="pt-legend-item cat-lanthanide"><span class="legend-dot"></span>Lanthanide</span>
-                <span class="pt-legend-item cat-actinide"><span class="legend-dot"></span>Actinide</span>
-                <span class="pt-legend-item cat-unknown"><span class="legend-dot"></span>Unknown</span>
-            </div>
+                            <!-- Single Unified Element Inspection Card -->
+                            <div class="pt-inspect-card" id="pt-inspect-card">
+                                <div class="pt-inspect-content">
+                                    <div class="pt-inspect-symbol" id="pt-inspect-symbol">C</div>
+                                    <div class="pt-inspect-details">
+                                        <div class="pt-inspect-name" id="pt-inspect-name">Carbon</div>
+                                        <div class="pt-inspect-meta" id="pt-inspect-meta">Atomic #6 • Reactive Nonmetal
+                                        </div>
+                                    </div>
+                                </div>
+                                <button type="button" id="pt-use-element-btn" class="pt-use-btn"
+                                    title="Use this element in current word">➕ Place in Word</button>
+                            </div>
+                        </div>
 
-            <!-- Scrollable Grid Wrapper -->
-            <div class="pt-scroll-wrapper">
-                <div class="periodic-grid" id="periodic-grid">
-                    <!-- Populated dynamically with all 118 elements -->
-                </div>
-            </div>
+                            <!-- Category Legend -->
+                            <div class="pt-legend">
+                                <span class="pt-legend-item cat-nonmetal"><span
+                                        class="legend-dot"></span>Nonmetal</span>
+                                <span class="pt-legend-item cat-noble-gas"><span class="legend-dot"></span>Noble
+                                    Gas</span>
+                                <span class="pt-legend-item cat-alkali"><span class="legend-dot"></span>Alkali
+                                    Metal</span>
+                                <span class="pt-legend-item cat-alkaline-earth"><span class="legend-dot"></span>Alkaline
+                                    Earth</span>
+                                <span class="pt-legend-item cat-metalloid"><span
+                                        class="legend-dot"></span>Metalloid</span>
+                                <span class="pt-legend-item cat-halogen"><span class="legend-dot"></span>Halogen</span>
+                                <span class="pt-legend-item cat-transition"><span
+                                        class="legend-dot"></span>Transition</span>
+                                <span class="pt-legend-item cat-post-transition"><span
+                                        class="legend-dot"></span>Post-Transition</span>
+                                <span class="pt-legend-item cat-lanthanide"><span
+                                        class="legend-dot"></span>Lanthanide</span>
+                                <span class="pt-legend-item cat-actinide"><span
+                                        class="legend-dot"></span>Actinide</span>
+                                <span class="pt-legend-item cat-unknown"><span class="legend-dot"></span>Unknown</span>
+                            </div>
 
-            <!-- Inspection Card -->
-            <div class="pt-inspect-card" id="pt-inspect-card">
-                <div class="pt-inspect-content">
-                    <div class="pt-inspect-symbol" id="pt-inspect-symbol">C</div>
-                    <div class="pt-inspect-details">
-                        <div class="pt-inspect-name" id="pt-inspect-name">Carbon</div>
-                        <div class="pt-inspect-meta" id="pt-inspect-meta">Atomic #6 • Reactive Nonmetal</div>
-                    </div>
-                </div>
-                <button type="button" id="pt-use-element-btn" class="pt-use-btn" title="Use this element in current puzzle">➕ Place in Puzzle</button>
-            </div>
+                                    <!-- Scrollable Grid Wrapper -->
+                                    <div class="pt-scroll-wrapper">
+                                        <div class="periodic-grid" id="periodic-grid">
+                                            <!-- Populated dynamically with all 118 elements -->
+                                        </div>
+                                    </div>
+                                </div>
         </section>
 
         <!-- Original Credits & Ko-fi Support -->
         <div class="credits">
             Created by Amit Joshi
             <br>
-            <a href="https://github.com/amitjoshi2724" target="_blank" rel="noopener noreferrer">github.com/amitjoshi2724</a>
+            <a href="https://github.com/amitjoshi2724" target="_blank"
+                rel="noopener noreferrer">github.com/amitjoshi2724</a>
             <div class="algorithm">Built with Dynamic Programming</div>
-            <div id="kofi-widget-container" style="display: flex; align-items: center; justify-content: center; margin-top: 14px;">
+            <div id="kofi-widget-container"
+                style="display: flex; align-items: center; justify-content: center; margin-top: 14px;">
                 <script>
                     if (window.kofiwidget2) {
                         try {
@@ -226,35 +252,48 @@
             <div class="rules-step">
                 <div class="rules-icon">⏱️</div>
                 <div>
-                    <strong>Speed is the objective!</strong> The timer starts running the moment the target word is shown. Try to spell the word completely as fast as possible.
+                    <strong>Speed is the objective!</strong> The timer starts running the moment the target word is
+                    shown. Try to spell the word completely as fast as possible.
                 </div>
             </div>
             <div class="rules-step">
                 <div class="rules-icon">⚛️</div>
                 <div>
-                    <strong>Multiple valid spelling lengths:</strong> Words often have several different chemical breakdowns. For example:
-                    <div style="margin-top: 6px; padding: 6px 10px; background: #f0e6ff; border-radius: 6px; font-size: 13.5px;">
-                        • <strong>NO</strong> can be 1 element (<em>Nobelium</em> [<strong>No</strong>]) or 2 elements (<em>Nitrogen</em> [<strong>N</strong>] + <em>Oxygen</em> [<strong>O</strong>])<br>
-                        • <strong>BACON</strong> can be <em>Barium</em> [<strong>Ba</strong>] + <em>Carbon</em> [<strong>C</strong>] + <em>Oxygen</em> [<strong>O</strong>] + <em>Nitrogen</em> [<strong>N</strong>], or <em>Boron</em> [<strong>B</strong>] + <em>Actinium</em> [<strong>Ac</strong>] + <em>Oxygen</em> [<strong>O</strong>] + <em>Nitrogen</em> [<strong>N</strong>]
+                    <strong>Multiple valid spelling lengths:</strong> Words often have several different chemical
+                    breakdowns. For example:
+                    <div
+                        style="margin-top: 6px; padding: 6px 10px; background: #f0e6ff; border-radius: 6px; font-size: 13.5px;">
+                        • <strong>NO</strong> can be 1 element (<em>Nobelium</em> [<strong>No</strong>]) or 2 elements
+                        (<em>Nitrogen</em> [<strong>N</strong>] + <em>Oxygen</em> [<strong>O</strong>])<br>
+                        • <strong>BACON</strong> can be <em>Barium</em> [<strong>Ba</strong>] + <em>Carbon</em>
+                        [<strong>C</strong>] + <em>Oxygen</em> [<strong>O</strong>] + <em>Nitrogen</em>
+                        [<strong>N</strong>], or <em>Boron</em> [<strong>B</strong>] + <em>Actinium</em>
+                        [<strong>Ac</strong>] + <em>Oxygen</em> [<strong>O</strong>] + <em>Nitrogen</em>
+                        [<strong>N</strong>]
                     </div>
                 </div>
             </div>
             <div class="rules-step">
                 <div class="rules-icon">🗑️</div>
                 <div>
-                    <strong>Drag to Delete:</strong> Need to change an element you placed earlier? Simply <strong>drag any element card into the 🗑️ trash can</strong> (or click &times;) to delete it! You don't have to undo one-by-one.
+                    <strong>Drag to Delete:</strong> Need to change an element you placed earlier? Simply <strong>drag
+                        any element card into the 🗑️ trash can</strong> (or click &times;) to delete it! You don't have
+                    to undo one-by-one.
                 </div>
             </div>
             <div class="rules-step">
                 <div class="rules-icon">🔄</div>
                 <div>
-                    <strong>Undo & Reset anytime:</strong> You can <strong>Undo</strong> your last element or <strong>Reset</strong> the entire puzzle at any point to restart the timer and aim for a new personal best!
+                    <strong>Undo & Reset anytime:</strong> You can <strong>Undo</strong> your last element or
+                    <strong>Reset</strong> the entire puzzle at any point to restart the timer and aim for a new
+                    personal best!
                 </div>
             </div>
             <div class="rules-step">
                 <div class="rules-icon">📅</div>
                 <div>
-                    <strong>Calendar Archive:</strong> Browse the full monthly calendar of past daily puzzles in the <strong>Archive</strong>.
+                    <strong>Calendar Archive:</strong> Browse the full monthly calendar of past daily puzzles in the
+                    <strong>Archive</strong>.
                 </div>
             </div>
 
@@ -282,14 +321,26 @@
                     <div class="stat-lbl">CURRENT STREAK</div>
                 </div>
                 <div class="stat-item">
+                    <div class="stat-val" id="stat-max-streak">0</div>
+                    <div class="stat-lbl">MAX STREAK</div>
+                </div>
+                <div class="stat-item">
                     <div class="stat-val" id="stat-best-time">--</div>
                     <div class="stat-lbl">BEST TIME</div>
                 </div>
+                <div class="stat-item">
+                    <div class="stat-val" id="stat-avg-time">--</div>
+                    <div class="stat-lbl">AVG TIME</div>
+                </div>
             </div>
 
-            <div class="dist-section-title">SOLVE TIME DISTRIBUTION</div>
-            <div class="dist-bars" id="dist-bars-container">
-                <!-- Injected dynamically -->
+            <!-- Current / Today's Puzzle Status in Stats -->
+            <div class="stats-puzzle-summary" id="stats-puzzle-summary">
+                <div class="stats-puzzle-summary-header">
+                    <span class="stats-puzzle-summary-title" id="stats-puzzle-summary-title">Daily Puzzle</span>
+                    <span class="stats-puzzle-summary-time" id="stats-puzzle-summary-time">⏱️ --</span>
+                </div>
+                <div class="stats-puzzle-summary-status" id="stats-puzzle-summary-status">Loading status...</div>
             </div>
 
             <div class="modal-footer-box">
@@ -298,13 +349,16 @@
                     <span class="countdown-val" id="next-countdown-val">--:--:--</span>
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
-                    <button class="share-btn" id="stats-share-no-spoiler-btn" title="Share result with emoji blocks (no spoilers)">
+                    <button class="share-btn" id="stats-share-no-spoiler-btn"
+                        title="Share result with emoji blocks (no spoilers)">
                         <span>📋 Share (No Spoilers)</span>
                     </button>
-                    <button class="share-btn secondary" id="stats-share-spoiler-btn" title="Share full solution with element words">
+                    <button class="share-btn secondary" id="stats-share-spoiler-btn"
+                        title="Share full solution with element words">
                         <span>👁️ Share (With Spoilers)</span>
                     </button>
-                    <button id="stats-retry-btn" class="quick-action-btn reset" style="padding: 10px 14px; font-size: 14px;">
+                    <button id="stats-retry-btn" class="quick-action-btn reset"
+                        style="padding: 10px 14px; font-size: 14px;">
                         <span>🔄 Retry / Reset</span>
                     </button>
                 </div>
@@ -373,7 +427,9 @@
             <!-- VIEW 2: List View -->
             <div id="archive-list-view" style="display: none;">
                 <div class="archive-controls">
-                    <input type="text" id="archive-search" class="archive-search-input" placeholder="Search by date (YYYY-MM-DD) or #..." autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="none">
+                    <input type="text" id="archive-search" class="archive-search-input"
+                        placeholder="Search by date (YYYY-MM-DD) or #..." autocomplete="off" spellcheck="false"
+                        autocorrect="off" autocapitalize="none">
                     <button class="archive-filter-btn active" data-filter="all">All</button>
                     <button class="archive-filter-btn" data-filter="solved">Solved</button>
                     <button class="archive-filter-btn" data-filter="unplayed">Unplayed</button>
