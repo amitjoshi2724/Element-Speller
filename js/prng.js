@@ -59,11 +59,32 @@ export function getDateForPuzzleNumber(puzzleNum, epochStr = EPOCH_DATE_STR) {
     return `${y}-${m}-${day}`;
 }
 
+export const SIX_WORD_ERA_START_DATE = "2026-11-09";
+
 /**
- * Deterministically pick 6 daily words using Mulberry32.
- * Picks distinct, engaging words (4-8 letters preferred) deterministically seeded by date.
+ * Deterministically pick daily words using Mulberry32.
+ * - For dates before 2026-11-09 (the 1-word era): picks exactly 1 word using the original
+ *   deterministic seed and full dictionary, preserving past puzzles and answers 100%.
+ * - For Nov 9, 2026 and later: picks 6 distinct, engaging words (4-8 letters preferred).
  */
-export function getDailyWords(dateStr, count = 6) {
+export function getDailyWords(dateStr, count = null) {
+    const isSingleWordEra = dateStr < SIX_WORD_ERA_START_DATE;
+
+    // Legacy 1-word era (before Nov 9, 2026) or explicit single word request
+    if (isSingleWordEra || count === 1) {
+        const seedVal = hashString(`elementspeller-word-${dateStr}`);
+        const rng = createMulberry32(seedVal);
+        const idx = Math.floor(rng() * WORDS.length);
+        return {
+            words: [WORDS[idx]],
+            puzzleNumber: getPuzzleNumber(dateStr),
+            dateStr,
+            isLegacySingleWord: true
+        };
+    }
+
+    // 6-word era (Nov 9, 2026 and later)
+    const targetCount = count || 6;
     const seedVal = hashString(`elementspeller-words-v2-${dateStr}`);
     const rng = createMulberry32(seedVal);
     const words = [];
@@ -72,7 +93,7 @@ export function getDailyWords(dateStr, count = 6) {
     // Prefer fun, readable word lengths (4-8 chars) so they fit nicely on screen
     const preferred = WORDS.filter(w => w.length >= 4 && w.length <= 8);
     let attempts = 0;
-    while (words.length < count && attempts < 5000) {
+    while (words.length < targetCount && attempts < 5000) {
         attempts++;
         const idx = Math.floor(rng() * preferred.length);
         const w = preferred[idx];
@@ -83,7 +104,7 @@ export function getDailyWords(dateStr, count = 6) {
     }
 
     // Fallback if needed
-    while (words.length < count) {
+    while (words.length < targetCount) {
         const idx = Math.floor(rng() * WORDS.length);
         const w = WORDS[idx];
         if (!used.has(w)) {
@@ -95,7 +116,8 @@ export function getDailyWords(dateStr, count = 6) {
     return {
         words,
         puzzleNumber: getPuzzleNumber(dateStr),
-        dateStr
+        dateStr,
+        isLegacySingleWord: false
     };
 }
 
@@ -103,7 +125,7 @@ export function getDailyWords(dateStr, count = 6) {
  * Deterministically pick daily word (backward compatible with single word callers).
  */
 export function getDailyWord(dateStr) {
-    const res = getDailyWords(dateStr, 6);
+    const res = getDailyWords(dateStr, 1);
     return {
         word: res.words[0],
         words: res.words,
