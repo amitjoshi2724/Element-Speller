@@ -703,7 +703,6 @@ class ElementSpellerGame {
         }
 
         for (let i = 0; i < this.dailyWords.length; i++) {
-            const word = this.dailyWords[i];
             const state = this.wordStates[i];
             const isCurrent = (i === this.currentWordIdx);
             const isSolved = state ? state.isSolved : false;
@@ -712,17 +711,11 @@ class ElementSpellerGame {
             pill.type = "button";
             pill.className = `word-pill ${isCurrent ? "active" : ""} ${isSolved ? "solved" : ""}`;
             pill.dataset.index = String(i);
-            pill.title = isSolved ? `Word #${i + 1}: ${word} (Solved!)` : `Word #${i + 1}`;
+            pill.title = isSolved ? `Word #${i + 1} (Solved)` : `Word #${i + 1}`;
 
             const statusText = isSolved ? `✓ ${i + 1}` : `${i + 1}`;
-            const previewText = !this.isWordRevealed
-                ? "••••"
-                : (isSolved ? word : `${word.slice(0, 1)}•••`);
 
-            pill.innerHTML = `
-                <span class="pill-status">${statusText}</span>
-                <span class="pill-word-preview">${previewText}</span>
-            `;
+            pill.innerHTML = `<span class="pill-status">${statusText}</span>`;
 
             pill.addEventListener("click", () => {
                 this.selectWord(i);

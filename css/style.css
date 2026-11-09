@@ -1068,10 +1068,9 @@ input, textarea {
     flex: 1 1 0;
     min-width: clamp(2.4rem, 6.5vw, 4rem);
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: clamp(0.35rem, 0.9vw, 0.55rem) clamp(0.15rem, 0.4vw, 0.35rem);
+    padding: clamp(0.42rem, 1vw, 0.65rem) clamp(0.2rem, 0.5vw, 0.5rem);
     background: #ffffff;
     border: 2px solid #d8bfd8;
     border-radius: clamp(0.35rem, 0.8vw, 0.6rem);
@@ -1105,31 +1104,17 @@ input, textarea {
 }
 
 .pill-status {
-    font-size: clamp(0.7rem, 1.5vw, 0.82rem);
+    font-size: clamp(0.85rem, 2vw, 1.05rem);
     font-weight: 700;
     color: #4b0082;
     line-height: 1.1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .word-pill.solved .pill-status {
     color: #059669;
-}
-
-.pill-word-preview {
-    font-size: clamp(0.58rem, 1.2vw, 0.7rem);
-    color: #6b7280;
-    margin-top: 2px;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.word-pill.solved .pill-word-preview {
-    color: #047857;
-    font-weight: 700;
 }
 
 /* Solved words breakdown in Solved Card */

@@ -1,9 +1,9 @@
 /**
- * Element-Speller Service Worker (v1.0.7)
+ * Element-Speller Service Worker (v1.0.8)
  * Full offline PWA support for macOS Dock, iOS Safari, Android, and Desktop Chrome.
  */
 
-const CACHE_NAME = 'element-speller-v1.0.7';
+const CACHE_NAME = 'element-speller-v1.0.8';
 
 const CORE_ASSETS = [
   './',
