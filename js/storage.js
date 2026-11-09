@@ -223,6 +223,27 @@ export function saveLocalStats(stats) {
 
 const DAILY_PROGRESS_PREFIX = "elementspeller_progress_v2_";
 
+let progressSyncTimer = null;
+
+async function syncProgressToCloud(dateStr, progress) {
+    const user = getCurrentUser();
+    if (!user || !dateStr) return;
+    clearTimeout(progressSyncTimer);
+    progressSyncTimer = setTimeout(async () => {
+        const services = await loadFirestore();
+        if (!services || !services.db || !services.fns) return;
+        try {
+            const userRef = services.fns.doc(services.db, "users", user.uid);
+            await services.fns.setDoc(userRef, {
+                [`elementspeller_progress_${dateStr}`]: progress,
+                lastUpdated: Date.now()
+            }, { merge: true });
+        } catch (e) {
+            console.warn("Could not sync active progress to Firestore:", e);
+        }
+    }, 600);
+}
+
 export function saveDailyProgress(dateStr, progress) {
     if (!dateStr) return;
     try {
@@ -232,6 +253,7 @@ export function saveDailyProgress(dateStr, progress) {
             timestamp: Date.now()
         }));
     } catch (e) { }
+    syncProgressToCloud(dateStr, progress);
 }
 
 export function loadDailyProgress(dateStr) {
@@ -251,6 +273,17 @@ export function clearDailyProgress(dateStr) {
     try {
         localStorage.removeItem(`${DAILY_PROGRESS_PREFIX}${dateStr}`);
     } catch (e) { }
+    const user = getCurrentUser();
+    if (user) {
+        loadFirestore().then(services => {
+            if (services && services.db && services.fns) {
+                const userRef = services.fns.doc(services.db, "users", user.uid);
+                services.fns.setDoc(userRef, {
+                    [`elementspeller_progress_${dateStr}`]: null
+                }, { merge: true }).catch(() => {});
+            }
+        });
+    }
 }
 
 export function recordCompletion(dateStr, puzzleNum, wordOrWords, won, elementsUsedOrWordRecords, solveTimeMs) {
@@ -402,6 +435,24 @@ onAuthChange(async (user) => {
             const cloudData = snap.data();
             const cloudStats = cloudData.element_speller_stats || cloudData.elementspeller_stats || cloudData.elementle_stats || {};
             const cloudHistory = cloudData.element_speller_history || cloudData.elementspeller_history || cloudData.elementle_history || {};
+
+            // Merge active puzzle progress from cloud
+            for (const [key, val] of Object.entries(cloudData)) {
+                if (key.startsWith("elementspeller_progress_") && val) {
+                    const dStr = key.replace("elementspeller_progress_", "");
+                    const localRaw = localStorage.getItem(`${DAILY_PROGRESS_PREFIX}${dStr}`);
+                    const localData = localRaw ? JSON.parse(localRaw) : null;
+                    if (!localData || (val.timestamp && val.timestamp > (localData.timestamp || 0))) {
+                        try {
+                            localStorage.setItem(`${DAILY_PROGRESS_PREFIX}${dStr}`, JSON.stringify({
+                                dateStr: dStr,
+                                progress: val,
+                                timestamp: val.timestamp || Date.now()
+                            }));
+                        } catch (e) { }
+                    }
+                }
+            }
 
             // Merge history: union of completed puzzles
             const mergedHistory = { ...memoryHistory };

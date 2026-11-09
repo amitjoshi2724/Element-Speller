@@ -224,18 +224,19 @@ class ElementSpellerGame {
     }
 
     handlePeriodicTableSelect(elem) {
-        if (!this.isWordRevealed && !this.isGameOver) {
-            this.revealWordAndStart();
+        if (this.isGameOver) return;
+
+        // Auto-start timer on first element placement if not already running
+        if (!this.timerInterval) {
+            this.startSolveTimer(this.elapsedOffsetMs || 0);
         }
 
         // Place or guess this element in current active word
-        if (this.isWordRevealed && !this.isGameOver) {
-            const currentWordState = this.wordStates[this.currentWordIdx];
-            if (!currentWordState || currentWordState.isSolved) {
-                this.goToNextUnsolvedWord();
-            }
-            this.handleGuess(elem.symbol);
+        const currentWordState = this.wordStates[this.currentWordIdx];
+        if (!currentWordState || currentWordState.isSolved) {
+            this.goToNextUnsolvedWord();
         }
+        this.handleGuess(elem.symbol);
     }
 
     initEventListeners() {
@@ -627,17 +628,32 @@ class ElementSpellerGame {
 
         // Check for partial saved progress on today's puzzle
         const savedProgress = !isPractice ? loadDailyProgress(dateStr) : null;
-        if (savedProgress && savedProgress.wordStates && savedProgress.wordStates.length === this.dailyWords.length) {
-            this.wordStates = savedProgress.wordStates.map(ws => ({
-                word: ws.word,
-                placedElements: (ws.placedElements || []).map(e => {
-                    const canonical = symbolToData[e.symbol?.toLowerCase()];
-                    return canonical ? { ...canonical } : { symbol: e.symbol, name: e.name || e.symbol, number: e.number || "" };
-                }),
-                isSolved: !!ws.isSolved,
-                solveTimeMs: ws.solveTimeMs || null
-            }));
-            this.currentWordIdx = savedProgress.currentWordIdx || 0;
+        if (savedProgress && savedProgress.wordStates && Array.isArray(savedProgress.wordStates)) {
+            // Restore matched words
+            for (let i = 0; i < this.dailyWords.length; i++) {
+                const word = this.dailyWords[i];
+                const saved = savedProgress.wordStates.find(ws => ws.word === word) || savedProgress.wordStates[i];
+                if (saved && (saved.word === word || !saved.word)) {
+                    this.wordStates[i] = {
+                        word,
+                        placedElements: (saved.placedElements || []).map(e => {
+                            const canonical = symbolToData[e.symbol?.toLowerCase()];
+                            return canonical ? { ...canonical } : { symbol: e.symbol, name: e.name || e.symbol, number: e.number || "" };
+                        }),
+                        isSolved: !!saved.isSolved,
+                        solveTimeMs: saved.solveTimeMs || null
+                    };
+                }
+            }
+
+            let targetIdx = 0;
+            if (savedProgress.currentWordIdx !== undefined && !this.wordStates[savedProgress.currentWordIdx]?.isSolved) {
+                targetIdx = savedProgress.currentWordIdx;
+            } else {
+                const firstUnsolved = this.wordStates.findIndex(s => !s.isSolved);
+                targetIdx = firstUnsolved !== -1 ? firstUnsolved : 0;
+            }
+            this.currentWordIdx = targetIdx;
             this.elapsedOffsetMs = savedProgress.elapsedTimeMs || 0;
             this.isWordRevealed = true;
 
@@ -653,15 +669,20 @@ class ElementSpellerGame {
             }
             if (this.dom.submitBtn) this.dom.submitBtn.disabled = false;
 
-            this.startSolveTimer(this.elapsedOffsetMs);
             const solvedCount = this.wordStates.filter(s => s.isSolved).length;
-            this.dom.statusMessage.textContent = `Resumed puzzle! ${solvedCount}/${this.dailyWords.length} words solved. Enter elements to continue.`;
+            if (this.elapsedOffsetMs > 0 || solvedCount > 0) {
+                this.startSolveTimer(this.elapsedOffsetMs);
+                this.dom.statusMessage.textContent = `Resumed puzzle! ${solvedCount}/${this.dailyWords.length} words solved (${this.formatElapsed(this.elapsedOffsetMs)} elapsed). Click any word to continue!`;
+            } else {
+                this.dom.liveTimerDisplay.textContent = "00:00.0";
+                this.dom.statusMessage.textContent = `Spell all 6 words using chemical elements. Click any word to work on it! (Timer starts on first move)`;
+            }
             this.dom.statusMessage.className = "info";
             return;
         }
 
-        // Unstarted state: word is hidden, timer is stopped at 00:00.0
-        this.isWordRevealed = false;
+        // Fresh unstarted state: words are revealed upfront, timer starts on first move
+        this.isWordRevealed = true;
         this.stopSolveTimer();
         this.dom.liveTimerDisplay.textContent = "00:00.0";
         this.renderWordPicker();
@@ -670,18 +691,19 @@ class ElementSpellerGame {
 
         if (this.dom.elementInput) {
             this.dom.elementInput.value = "";
-            this.dom.elementInput.disabled = true;
-            this.dom.elementInput.placeholder = "Click 'Reveal' above to begin spelling...";
+            this.dom.elementInput.disabled = false;
+            this.dom.elementInput.placeholder = "Enter element name or symbol (e.g. Carbon, C)...";
+            this.dom.elementInput.focus();
         }
         if (this.dom.submitBtn) {
-            this.dom.submitBtn.disabled = true;
+            this.dom.submitBtn.disabled = false;
         }
-        this.dom.statusMessage.textContent = "Ready? Click 'Reveal 6 Words & Start Timer' to test your chemistry speed!";
+        this.dom.statusMessage.textContent = "Spell all 6 words using chemical elements. Click any word to work on it! (Timer starts on first move)";
         this.dom.statusMessage.className = "info";
     }
 
     revealWordAndStart() {
-        if (this.isWordRevealed || this.isGameOver) return;
+        if (this.isGameOver) return;
         this.isWordRevealed = true;
         this.renderWordPicker();
         this.renderTargetWord();
@@ -697,10 +719,12 @@ class ElementSpellerGame {
             this.dom.submitBtn.disabled = false;
         }
 
-        this.startSolveTimer(this.elapsedOffsetMs);
+        if (!this.timerInterval) {
+            this.startSolveTimer(this.elapsedOffsetMs);
+        }
         const count = this.dailyWords.length;
         this.dom.statusMessage.textContent = count > 1
-            ? `Timer running! Spell Word 1 of ${count} ("${this.currentWord}").`
+            ? `Timer running! Spell Word ${this.currentWordIdx + 1} of ${count} ("${this.currentWord}").`
             : `Timer running! Spell "${this.currentWord}".`;
         this.dom.statusMessage.className = "info";
     }
@@ -764,6 +788,7 @@ class ElementSpellerGame {
 
         for (let i = 0; i < this.dailyWords.length; i++) {
             const state = this.wordStates[i];
+            const word = this.dailyWords[i] || "";
             const isCurrent = (i === this.currentWordIdx);
             const isSolved = state ? state.isSolved : false;
 
@@ -771,11 +796,11 @@ class ElementSpellerGame {
             pill.type = "button";
             pill.className = `word-pill ${isCurrent ? "active" : ""} ${isSolved ? "solved" : ""}`;
             pill.dataset.index = String(i);
-            pill.title = isSolved ? `Word #${i + 1} (Solved)` : `Word #${i + 1}`;
+            pill.title = isSolved ? `Word #${i + 1}: ${word} (Solved)` : `Word #${i + 1}: ${word} (Click to solve)`;
 
-            const statusText = isSolved ? `✓ ${i + 1}` : `${i + 1}`;
+            const badgeText = isSolved ? `✓ ${i + 1}` : `${i + 1}`;
 
-            pill.innerHTML = `<span class="pill-status">${statusText}</span>`;
+            pill.innerHTML = `<span class="pill-badge">${badgeText}</span><span class="pill-word-name">${word}</span>`;
 
             pill.addEventListener("click", () => {
                 this.selectWord(i);
@@ -795,14 +820,14 @@ class ElementSpellerGame {
         this.updateButtonsState();
 
         const currentWordState = this.wordStates[this.currentWordIdx];
-        if (this.isWordRevealed && !this.isGameOver) {
+        if (!this.isGameOver) {
             if (currentWordState && currentWordState.isSolved) {
                 this.dom.statusMessage.textContent = `Word ${index + 1} ("${this.currentWord}") is already solved! Pick another word or review.`;
                 this.dom.statusMessage.className = "success";
                 if (this.dom.elementInput) this.dom.elementInput.disabled = true;
                 if (this.dom.submitBtn) this.dom.submitBtn.disabled = true;
             } else {
-                this.dom.statusMessage.textContent = `Spelling Word ${index + 1} of 6 ("${this.currentWord}").`;
+                this.dom.statusMessage.textContent = `Spelling Word ${index + 1} of ${this.dailyWords.length} ("${this.currentWord}").`;
                 this.dom.statusMessage.className = "info";
                 if (this.dom.elementInput) {
                     this.dom.elementInput.disabled = false;
@@ -839,25 +864,6 @@ class ElementSpellerGame {
     renderTargetWord() {
         if (!this.dom.targetWordDisplay) return;
 
-        if (!this.isWordRevealed) {
-            const count = this.dailyWords.length;
-            const countStr = count > 1 ? `${count} ` : "";
-            const btnLabel = this.isPractice
-                ? `▶️ Reveal ${countStr}Practice Words & Start Timer`
-                : `▶️ Reveal ${countStr}Daily Words & Start Timer`;
-            this.dom.targetWordDisplay.innerHTML = `
-                <button id="reveal-word-btn" class="reveal-word-btn" title="Reveal the words and start the solve timer">
-                    <span class="reveal-icon">👁️</span>
-                    <span>${btnLabel}</span>
-                </button>
-            `;
-            const revealBtn = document.getElementById("reveal-word-btn");
-            if (revealBtn) {
-                revealBtn.addEventListener("click", () => this.revealWordAndStart());
-            }
-            return;
-        }
-
         const matchedLen = this.getMatchedPrefixLength();
         const matched = this.currentWord.slice(0, matchedLen);
         const remaining = this.currentWord.slice(matchedLen);
@@ -869,11 +875,6 @@ class ElementSpellerGame {
         this.dom.elementSlotsRow.innerHTML = "";
         this.updateTrashCanState();
         this.updateButtonsState();
-
-        if (!this.isWordRevealed) {
-            this.dom.elementSlotsRow.innerHTML = `<span class="empty-tiles-placeholder">Click 'Reveal 6 Words & Start Timer' when you are ready!</span>`;
-            return;
-        }
 
         if (this.placedElements.length === 0) {
             this.dom.elementSlotsRow.innerHTML = `<span class="empty-tiles-placeholder">Enter elements to spell "${this.currentWord}" (drag to reorder or 🗑️ to delete)</span>`;
@@ -1045,7 +1046,7 @@ class ElementSpellerGame {
 
     deleteElementAtIndex(deleteIndex) {
         const isCurrentSolved = this.wordStates[this.currentWordIdx]?.isSolved;
-        if (this.isGameOver || !this.isWordRevealed || isCurrentSolved) return;
+        if (this.isGameOver || isCurrentSolved) return;
         if (deleteIndex < 0 || deleteIndex >= this.placedElements.length) return;
 
         const deletedElem = this.placedElements[deleteIndex];
@@ -1060,6 +1061,7 @@ class ElementSpellerGame {
         this.dom.statusMessage.className = "info";
 
         this.checkSolveVictory();
+        this.saveCurrentProgress();
 
         if (this.dom.elementInput) {
             this.dom.elementInput.focus();
@@ -1067,7 +1069,7 @@ class ElementSpellerGame {
     }
 
     handleGuess(directInput = null) {
-        if (!this.isWordRevealed || this.isGameOver) return;
+        if (this.isGameOver) return;
         const currentWordState = this.wordStates[this.currentWordIdx];
         if (currentWordState && currentWordState.isSolved) {
             this.goToNextUnsolvedWord();
@@ -1079,6 +1081,11 @@ class ElementSpellerGame {
             : (this.dom.elementInput ? this.dom.elementInput.value : "").trim();
 
         if (!inputVal) return;
+
+        // Auto-start timer on first element placement if not already running
+        if (!this.timerInterval && !this.isGameOver) {
+            this.startSolveTimer(this.elapsedOffsetMs || 0);
+        }
 
         // Use robust element parser (handles symbol, name, "C - Carbon", atomic #)
         const elem = parseElementInput(inputVal);
@@ -1110,6 +1117,7 @@ class ElementSpellerGame {
         }
 
         this.checkSolveVictory();
+        this.saveCurrentProgress();
     }
 
     checkSolveVictory() {
@@ -1249,7 +1257,7 @@ class ElementSpellerGame {
 
     handleUndo() {
         const isCurrentSolved = this.wordStates[this.currentWordIdx]?.isSolved;
-        if (!this.isWordRevealed || this.isGameOver || isCurrentSolved || this.placedElements.length === 0) return;
+        if (this.isGameOver || isCurrentSolved || this.placedElements.length === 0) return;
         const removed = this.placedElements.pop();
 
         this.renderTargetWord();
@@ -1261,6 +1269,7 @@ class ElementSpellerGame {
         this.dom.statusMessage.className = "info";
 
         this.checkSolveVictory();
+        this.saveCurrentProgress();
 
         if (this.dom.elementInput) {
             this.dom.elementInput.focus();
@@ -1269,7 +1278,7 @@ class ElementSpellerGame {
 
     handleClearWord() {
         const isCurrentSolved = this.wordStates[this.currentWordIdx]?.isSolved;
-        if (!this.isWordRevealed || this.isGameOver || isCurrentSolved || this.placedElements.length === 0) return;
+        if (this.isGameOver || isCurrentSolved || this.placedElements.length === 0) return;
 
         this.placedElements = [];
         this.renderTargetWord();
@@ -1287,8 +1296,8 @@ class ElementSpellerGame {
     }
 
     async handleReset(confirmPrompt = true) {
-        if (confirmPrompt && (this.isWordRevealed || this.isGameOver)) {
-            const msg = `Reset Element-Speller #${this.puzzleNumber} (All 6 Words)?\n\nThis will restart your timer from 00:00.0 so you can try for a new personal best!`;
+        if (confirmPrompt && (this.timerInterval || this.isGameOver || this.wordStates.some(w => w.isSolved || w.placedElements.length > 0))) {
+            const msg = `Reset Element-Speller #${this.puzzleNumber} (All 6 Words)?\n\nThis will restart your progress so you can solve from scratch!`;
             if (!confirm(msg)) {
                 return;
             }
@@ -1307,7 +1316,7 @@ class ElementSpellerGame {
         }
 
         this.isGameOver = false;
-        this.isWordRevealed = false;
+        this.isWordRevealed = true;
         this.currentWordIdx = 0;
         this.solveTimeMs = null;
         this.elapsedOffsetMs = 0;
@@ -1334,16 +1343,15 @@ class ElementSpellerGame {
 
         if (this.dom.elementInput) {
             this.dom.elementInput.value = "";
-            this.dom.elementInput.disabled = true;
-            this.dom.elementInput.placeholder = "Click 'Reveal' above to begin spelling...";
+            this.dom.elementInput.disabled = false;
+            this.dom.elementInput.placeholder = "Enter element name or symbol (e.g. Carbon, C)...";
+            this.dom.elementInput.focus();
         }
         if (this.dom.submitBtn) {
-            this.dom.submitBtn.disabled = true;
+            this.dom.submitBtn.disabled = false;
         }
 
-        const count = this.dailyWords.length;
-        const countStr = count > 1 ? `${count} ` : "";
-        this.dom.statusMessage.textContent = `Puzzle reset! Click 'Reveal ${countStr}Words & Start Timer' whenever you are ready.`;
+        this.dom.statusMessage.textContent = "Puzzle reset! Choose any word and enter elements to start. (Timer starts on first move)";
         this.dom.statusMessage.className = "info";
 
         if (this.dom.archiveModal.classList.contains("active")) {
@@ -1353,8 +1361,8 @@ class ElementSpellerGame {
     }
 
     saveCurrentProgress() {
-        if (this.isPractice || !this.currentDateStr || this.isGameOver || !this.isWordRevealed) return;
-        const elapsed = this.startTime ? (Date.now() - this.startTime) : 0;
+        if (this.isPractice || !this.currentDateStr || this.isGameOver) return;
+        const elapsed = this.startTime ? (Date.now() - this.startTime) : (this.elapsedOffsetMs || 0);
         const cleanWordStates = this.wordStates.map(ws => ({
             word: ws.word,
             placedElements: (ws.placedElements || []).map(e => ({
@@ -1368,7 +1376,8 @@ class ElementSpellerGame {
         saveDailyProgress(this.currentDateStr, {
             currentWordIdx: this.currentWordIdx,
             wordStates: cleanWordStates,
-            elapsedTimeMs: elapsed
+            elapsedTimeMs: elapsed,
+            timestamp: Date.now()
         });
     }
 

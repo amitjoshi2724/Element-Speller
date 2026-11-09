@@ -893,3 +893,123 @@
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* ==========================================================================
+   Desktop Responsive Periodic Table (>= 1000px)
+   Fits perfectly side-by-side with 0 horizontal or vertical scrollbars
+   ========================================================================== */
+@media (min-width: 1000px) {
+    .periodic-table-section {
+        margin-top: 0 !important;
+        padding: clamp(0.5rem, 0.9vw, 0.75rem) !important;
+        box-shadow: 0 4px 14px rgba(75, 0, 130, 0.08) !important;
+        background: #fdfaff !important;
+    }
+
+    #pt-toggle-btn {
+        display: none !important;
+    }
+
+    #pt-content-body {
+        display: block !important;
+    }
+
+    .pt-section-header {
+        margin-bottom: 0.35rem !important;
+    }
+
+    .pt-heading {
+        font-size: clamp(0.85rem, 1.3vw, 1.05rem) !important;
+    }
+
+    .pt-top-controls {
+        margin-bottom: 0.35rem !important;
+        gap: 0.4rem !important;
+    }
+
+    .pt-search-box {
+        padding: 0.25rem 0.5rem !important;
+    }
+
+    .pt-search-box input {
+        font-size: 0.78rem !important;
+    }
+
+    .pt-inspect-card {
+        padding: 0.25rem 0.5rem !important;
+    }
+
+    .pt-inspect-symbol {
+        width: clamp(1.8rem, 2.5vw, 2.2rem) !important;
+        height: clamp(1.8rem, 2.5vw, 2.2rem) !important;
+        font-size: clamp(0.9rem, 1.3vw, 1.15rem) !important;
+    }
+
+    .pt-inspect-name {
+        font-size: clamp(0.78rem, 1.1vw, 0.9rem) !important;
+    }
+
+    .pt-inspect-meta {
+        font-size: clamp(0.65rem, 0.9vw, 0.75rem) !important;
+    }
+
+    .pt-use-btn {
+        padding: 0.3rem 0.65rem !important;
+        font-size: 0.75rem !important;
+    }
+
+    .pt-legend {
+        margin-bottom: 0.35rem !important;
+        gap: 2px 5px !important;
+        font-size: 0.65rem !important;
+        padding: 2px 4px !important;
+    }
+
+    .pt-legend-item {
+        padding: 1px 4px !important;
+    }
+
+    .pt-scroll-wrapper {
+        overflow-x: hidden !important;
+        overflow-y: hidden !important;
+        width: 100% !important;
+        padding: 2px !important;
+        margin-bottom: 0.2rem !important;
+        border: 1px solid #e9d5ff !important;
+        background: #ffffff !important;
+    }
+
+    .periodic-grid {
+        grid-template-columns: repeat(18, minmax(0, 1fr)) !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        gap: 2px !important;
+        padding: 0 !important;
+    }
+
+    .pt-tile {
+        min-height: 0 !important;
+        padding: 1px !important;
+        border-width: 1px !important;
+    }
+
+    .pt-num {
+        font-size: clamp(0.38rem, 0.58vw, 0.52rem) !important;
+        padding-left: 1px !important;
+        line-height: 1 !important;
+    }
+
+    .pt-sym {
+        font-size: clamp(0.65rem, 0.92vw, 0.85rem) !important;
+        line-height: 1 !important;
+    }
+
+    .pt-name {
+        font-size: clamp(0.28rem, 0.44vw, 0.4rem) !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
+        line-height: 1 !important;
+    }
+}

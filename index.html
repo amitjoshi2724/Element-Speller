@@ -65,105 +65,109 @@
             <h1 class="visually-hidden">Element-Speller</h1>
         </div>
         <div class="puzzle-meta-badge" id="puzzle-meta-badge">Loading Daily Puzzle...</div>
-        <p>Spell all 6 target words using chemical elements as fast as you can! <strong>Drag any element to the 🗑️
-                trash can to delete it.</strong></p>
+        <p class="game-intro-text">Spell all 6 target words using chemical elements as fast as you can! <strong>Click any word to solve in any order. Drag any element to the 🗑️ trash can to delete it.</strong></p>
 
-        <!-- Word Tracker Navigation Bar (6 words per puzzle) -->
-        <div class="word-picker-bar" id="word-picker-bar">
-            <div class="word-picker-header">
-                <span class="word-picker-label" id="word-picker-label">Word <strong id="current-word-num">1</strong> of
-                    6</span>
-                <div class="word-picker-actions">
-                    <button type="button" id="next-word-quick-btn" class="word-next-btn" style="display: none;"
-                        title="Go to next unsolved word">Next Word ▶</button>
-                    <span class="word-picker-progress" id="words-solved-counter">0 / 6 Solved</span>
+        <!-- Main Responsive Two-Column Layout (Side-by-Side on Desktop, Stacked on Mobile) -->
+        <div class="game-dashboard-layout">
+            <!-- Left Column: Word Tracker, Timer, Target Word, Input, and Placed Elements -->
+            <div class="game-play-column">
+                <!-- Word Tracker Navigation Bar (6 words per puzzle) -->
+                <div class="word-picker-bar" id="word-picker-bar">
+                    <div class="word-picker-header">
+                        <span class="word-picker-label" id="word-picker-label">Word <strong id="current-word-num">1</strong> of 6</span>
+                        <div class="word-picker-actions">
+                            <button type="button" id="next-word-quick-btn" class="word-next-btn" style="display: none;"
+                                title="Go to next unsolved word">Next Word ▶</button>
+                            <span class="word-picker-progress" id="words-solved-counter">0 / 6 Solved</span>
+                        </div>
+                    </div>
+                    <div class="word-pills-row" id="word-pills-row">
+                        <!-- Dynamically populated with 6 word pills -->
+                    </div>
                 </div>
-            </div>
-            <div class="word-pills-row" id="word-pills-row">
-                <!-- Dynamically populated with 6 word pills -->
-            </div>
-        </div>
 
-        <!-- Live Solve Stopwatch & Quick Action Controls -->
-        <div class="timer-control-row">
-            <div class="stopwatch-badge" id="stopwatch-badge" title="Solve timer (started when word appeared)">
-                <span class="timer-icon">⏱️</span>
-                <span id="live-timer-display" class="live-timer-display">00:00.0</span>
-            </div>
-            <div class="quick-action-group">
-                <button id="undo-element-btn" class="quick-action-btn" title="Undo last element" disabled>↩️
-                    Undo</button>
-                <button id="clear-word-btn" class="quick-action-btn" title="Clear placed elements for this word"
-                    disabled>🗑️ Clear Word</button>
-                <button id="reset-puzzle-btn" class="quick-action-btn reset"
-                    title="Reset all 6 words & restart timer">🔄 Reset All</button>
-            </div>
-        </div>
-
-        <!-- Target Word Display & Dynamic Placed Element Slots -->
-        <div class="target-word-container">
-            <div class="target-word-label">TARGET WORD</div>
-            <div id="target-word-display" class="target-word-display">------</div>
-            <div id="element-slots-row" class="element-slots-row">
-                <!-- Dynamically populated with placed element tiles ONLY (no rigid ? placeholders) -->
-            </div>
-
-            <!-- Trash Can Drop Zone -->
-            <div id="trash-can-zone" class="trash-can-zone"
-                title="Drag any element card here to delete it (or click to remove last)">
-                <span class="trash-can-emoji">🗑️</span>
-                <span class="trash-can-label" id="trash-can-label">Drag element here to delete</span>
-            </div>
-
-            <div class="drag-hint-text" id="drag-hint-text">
-                <span>💡 <strong>Tip:</strong> Place elements down freely, or click any element in the ⚛️
-                    <strong>Periodic Table below</strong>! Drag cards to reorder, or drag to 🗑️ trash to delete.</span>
-            </div>
-        </div>
-
-        <!-- Solved Completion Card -->
-        <div id="solved-card" class="solved-card" style="display: none;">
-            <div class="solved-title">🎉 All 6 Words Solved!</div>
-            <div class="solved-time-stat" id="solved-time-stat">Solved in 00:00.0</div>
-            <div id="solved-words-breakdown" class="solved-words-breakdown">
-                <!-- Solved words breakdown list -->
-            </div>
-            <div class="solved-btn-row">
-                <button id="share-score-no-spoiler-btn" class="share-btn"
-                    title="Share result with emoji blocks (no spoilers)">📋 Share (No Spoilers)</button>
-                <button id="share-score-spoiler-btn" class="share-btn secondary"
-                    title="Share full solution with element words">👁️ Share (With Spoilers)</button>
-                <button id="solved-replay-btn" class="quick-action-btn reset">🔄 Retry for Faster Time</button>
-            </div>
-        </div>
-
-        <!-- Element Guess Input -->
-        <div class="input-group" id="input-group-area">
-            <div class="input-row">
-                <input type="text" id="element-input" list="elements-datalist"
-                    placeholder="Enter element name or symbol (e.g. Carbon, C)..." autocomplete="off" spellcheck="false"
-                    autocorrect="off" autocapitalize="none" autofocus>
-                <datalist id="elements-datalist">
-                    <!-- Populated dynamically with all 118 periodic table elements -->
-                </datalist>
-                <button id="submit-element-btn" class="primary-btn">Submit Element</button>
-            </div>
-        </div>
-
-        <div id="status-message" class="info">Enter the first element to begin spelling!</div>
-
-        <!-- Interactive Periodic Table of Elements (Directly in main game view) -->
-        <section class="periodic-table-section" id="periodic-table-section" aria-label="Periodic Table of Elements">
-            <div class="pt-section-header">
-                <div class="pt-title-group">
-                    <span class="pt-icon">⚛️</span>
-                    <h2 class="pt-heading">Periodic Table of Elements</h2>
+                <!-- Live Solve Stopwatch & Quick Action Controls -->
+                <div class="timer-control-row">
+                    <div class="stopwatch-badge" id="stopwatch-badge" title="Solve timer (started on first action)">
+                        <span class="timer-icon">⏱️</span>
+                        <span id="live-timer-display" class="live-timer-display">00:00.0</span>
+                    </div>
+                    <div class="quick-action-group">
+                        <button id="undo-element-btn" class="quick-action-btn" title="Undo last element" disabled>↩️
+                            Undo</button>
+                        <button id="clear-word-btn" class="quick-action-btn" title="Clear placed elements for this word"
+                            disabled>🗑️ Clear Word</button>
+                        <button id="reset-puzzle-btn" class="quick-action-btn reset"
+                            title="Reset all 6 words & restart timer">🔄 Reset All</button>
+                    </div>
                 </div>
-                <button type="button" id="pt-toggle-btn" class="pt-toggle-btn" aria-expanded="true"
-                    title="Toggle periodic table visibility">
-                    <span id="pt-toggle-icon">▾</span> <span id="pt-toggle-label">Hide Table</span>
-                </button>
+
+                <!-- Target Word Display & Dynamic Placed Element Slots -->
+                <div class="target-word-container">
+                    <div class="target-word-label">TARGET WORD</div>
+                    <div id="target-word-display" class="target-word-display">------</div>
+                    <div id="element-slots-row" class="element-slots-row">
+                        <!-- Dynamically populated with placed element tiles ONLY -->
+                    </div>
+
+                    <!-- Trash Can Drop Zone -->
+                    <div id="trash-can-zone" class="trash-can-zone"
+                        title="Drag any element card here to delete it (or click to remove last)">
+                        <span class="trash-can-emoji">🗑️</span>
+                        <span class="trash-can-label" id="trash-can-label">Drag element here to delete</span>
+                    </div>
+
+                    <div class="drag-hint-text" id="drag-hint-text">
+                        <span>💡 <strong>Tip:</strong> Place elements down freely, or click any element in the ⚛️
+                            <strong>Periodic Table</strong>! Drag cards to reorder, or drag to 🗑️ trash to delete.</span>
+                    </div>
+                </div>
+
+                <!-- Solved Completion Card -->
+                <div id="solved-card" class="solved-card" style="display: none;">
+                    <div class="solved-title">🎉 All 6 Words Solved!</div>
+                    <div class="solved-time-stat" id="solved-time-stat">Solved in 00:00.0</div>
+                    <div id="solved-words-breakdown" class="solved-words-breakdown">
+                        <!-- Solved words breakdown list -->
+                    </div>
+                    <div class="solved-btn-row">
+                        <button id="share-score-no-spoiler-btn" class="share-btn"
+                            title="Share result with emoji blocks (no spoilers)">📋 Share (No Spoilers)</button>
+                        <button id="share-score-spoiler-btn" class="share-btn secondary"
+                            title="Share full solution with element words">👁️ Share (With Spoilers)</button>
+                        <button id="solved-replay-btn" class="quick-action-btn reset">🔄 Retry for Faster Time</button>
+                    </div>
+                </div>
+
+                <!-- Element Guess Input -->
+                <div class="input-group" id="input-group-area">
+                    <div class="input-row">
+                        <input type="text" id="element-input" list="elements-datalist"
+                            placeholder="Enter element name or symbol (e.g. Carbon, C)..." autocomplete="off" spellcheck="false"
+                            autocorrect="off" autocapitalize="none" autofocus>
+                        <datalist id="elements-datalist">
+                            <!-- Populated dynamically with all 118 periodic table elements -->
+                        </datalist>
+                        <button id="submit-element-btn" class="primary-btn">Submit Element</button>
+                    </div>
+                </div>
+
+                <div id="status-message" class="info">Enter the first element to begin spelling!</div>
             </div>
+
+            <!-- Right Column: Interactive Periodic Table of Elements -->
+            <div class="game-table-column">
+                <section class="periodic-table-section" id="periodic-table-section" aria-label="Periodic Table of Elements">
+                    <div class="pt-section-header">
+                        <div class="pt-title-group">
+                            <span class="pt-icon">⚛️</span>
+                            <h2 class="pt-heading">Periodic Table of Elements</h2>
+                        </div>
+                        <button type="button" id="pt-toggle-btn" class="pt-toggle-btn" aria-expanded="true"
+                            title="Toggle periodic table visibility">
+                            <span id="pt-toggle-icon">▾</span> <span id="pt-toggle-label">Hide Table</span>
+                        </button>
+                    </div>
 
                     <div id="pt-content-body" class="pt-content-body">
                         <!-- Top Controls: Search Bar & Selected Element Inspection -->
@@ -192,38 +196,40 @@
                             </div>
                         </div>
 
-                            <!-- Category Legend -->
-                            <div class="pt-legend">
-                                <span class="pt-legend-item cat-nonmetal"><span
-                                        class="legend-dot"></span>Nonmetal</span>
-                                <span class="pt-legend-item cat-noble-gas"><span class="legend-dot"></span>Noble
-                                    Gas</span>
-                                <span class="pt-legend-item cat-alkali"><span class="legend-dot"></span>Alkali
-                                    Metal</span>
-                                <span class="pt-legend-item cat-alkaline-earth"><span class="legend-dot"></span>Alkaline
-                                    Earth</span>
-                                <span class="pt-legend-item cat-metalloid"><span
-                                        class="legend-dot"></span>Metalloid</span>
-                                <span class="pt-legend-item cat-halogen"><span class="legend-dot"></span>Halogen</span>
-                                <span class="pt-legend-item cat-transition"><span
-                                        class="legend-dot"></span>Transition</span>
-                                <span class="pt-legend-item cat-post-transition"><span
-                                        class="legend-dot"></span>Post-Transition</span>
-                                <span class="pt-legend-item cat-lanthanide"><span
-                                        class="legend-dot"></span>Lanthanide</span>
-                                <span class="pt-legend-item cat-actinide"><span
-                                        class="legend-dot"></span>Actinide</span>
-                                <span class="pt-legend-item cat-unknown"><span class="legend-dot"></span>Unknown</span>
-                            </div>
+                        <!-- Category Legend -->
+                        <div class="pt-legend">
+                            <span class="pt-legend-item cat-nonmetal"><span
+                                    class="legend-dot"></span>Nonmetal</span>
+                            <span class="pt-legend-item cat-noble-gas"><span class="legend-dot"></span>Noble
+                                Gas</span>
+                            <span class="pt-legend-item cat-alkali"><span class="legend-dot"></span>Alkali
+                                Metal</span>
+                            <span class="pt-legend-item cat-alkaline-earth"><span class="legend-dot"></span>Alkaline
+                                Earth</span>
+                            <span class="pt-legend-item cat-metalloid"><span
+                                    class="legend-dot"></span>Metalloid</span>
+                            <span class="pt-legend-item cat-halogen"><span class="legend-dot"></span>Halogen</span>
+                            <span class="pt-legend-item cat-transition"><span
+                                    class="legend-dot"></span>Transition</span>
+                            <span class="pt-legend-item cat-post-transition"><span
+                                    class="legend-dot"></span>Post-Transition</span>
+                            <span class="pt-legend-item cat-lanthanide"><span
+                                    class="legend-dot"></span>Lanthanide</span>
+                            <span class="pt-legend-item cat-actinide"><span
+                                    class="legend-dot"></span>Actinide</span>
+                            <span class="pt-legend-item cat-unknown"><span class="legend-dot"></span>Unknown</span>
+                        </div>
 
-                                    <!-- Scrollable Grid Wrapper -->
-                                    <div class="pt-scroll-wrapper">
-                                        <div class="periodic-grid" id="periodic-grid">
-                                            <!-- Populated dynamically with all 118 elements -->
-                                        </div>
-                                    </div>
-                                </div>
-        </section>
+                        <!-- Scrollable Grid Wrapper -->
+                        <div class="pt-scroll-wrapper">
+                            <div class="periodic-grid" id="periodic-grid">
+                                <!-- Populated dynamically with all 118 elements -->
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
 
         <!-- Original Credits & Ko-fi Support -->
         <div class="credits">
