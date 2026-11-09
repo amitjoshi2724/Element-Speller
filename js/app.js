@@ -15,6 +15,7 @@ import {
 } from "./storage.js";
 import { PeriodicTable } from "./periodic-table.js";
 import { setupAuthUI } from "./auth.js";
+import { isSpellable, getValidNextElements } from "./speller.js";
 
 class ElementSpellerGame {
     constructor() {
@@ -121,6 +122,7 @@ class ElementSpellerGame {
             modeTitle: document.getElementById("mode-title-text"),
             liveTimerDisplay: document.getElementById("live-timer-display"),
             stopwatchBadge: document.getElementById("stopwatch-badge"),
+            hintBtn: document.getElementById("hint-btn"),
             undoBtn: document.getElementById("undo-element-btn"),
             clearWordBtn: document.getElementById("clear-word-btn"),
             resetBtn: document.getElementById("reset-puzzle-btn"),
@@ -255,7 +257,10 @@ class ElementSpellerGame {
             });
         }
 
-        // Undo & Reset & Clear Word buttons
+        // Hint, Undo & Reset & Clear Word buttons
+        if (this.dom.hintBtn) {
+            this.dom.hintBtn.addEventListener("click", () => this.handleHint());
+        }
         if (this.dom.undoBtn) {
             this.dom.undoBtn.addEventListener("click", () => this.handleUndo());
         }
@@ -861,6 +866,114 @@ class ElementSpellerGame {
         }
     }
 
+    analyzeCurrentWordPath() {
+        const target = (this.currentWord || "").toUpperCase();
+        let spelledSoFar = "";
+        let firstDeadEndIndex = -1;
+
+        for (let i = 0; i < this.placedElements.length; i++) {
+            const elem = this.placedElements[i];
+            const sym = elem.symbol.toUpperCase();
+            spelledSoFar += sym;
+
+            // 1. Letters check: does target start with spelledSoFar?
+            if (!target.startsWith(spelledSoFar)) {
+                firstDeadEndIndex = i;
+                break;
+            }
+
+            // 2. Spellability check: can the remaining suffix be spelled with elements?
+            const remaining = target.slice(spelledSoFar.length);
+            if (!isSpellable(remaining)) {
+                firstDeadEndIndex = i;
+                break;
+            }
+        }
+
+        const isDeadEnd = (firstDeadEndIndex !== -1);
+        const validCount = isDeadEnd ? firstDeadEndIndex : this.placedElements.length;
+        const validPrefix = this.placedElements.slice(0, validCount).map(e => e.symbol).join("").toUpperCase();
+
+        return {
+            isDeadEnd,
+            firstDeadEndIndex,
+            validPrefix,
+            remainingAfterValid: target.slice(validPrefix.length)
+        };
+    }
+
+    handleHint() {
+        if (this.isGameOver) return;
+        const currentWordState = this.wordStates[this.currentWordIdx];
+        if (currentWordState && currentWordState.isSolved) {
+            this.dom.statusMessage.textContent = `Word #${this.currentWordIdx + 1} ("${this.currentWord}") is already solved! Click another word to work on it.`;
+            this.dom.statusMessage.className = "info";
+            return;
+        }
+
+        const analysis = this.analyzeCurrentWordPath();
+
+        if (analysis.isDeadEnd) {
+            // It is impossible with the letters they have already put!
+            const badElem = this.placedElements[analysis.firstDeadEndIndex];
+            const stepsToUndo = this.placedElements.length - analysis.firstDeadEndIndex;
+            const undoCountStr = stepsToUndo > 1 ? `Undo ${stepsToUndo} times` : "Undo";
+
+            // Find valid alternatives for the prefix before the dead-end element
+            const validAlternatives = getValidNextElements(this.currentWord, analysis.validPrefix.length);
+            let altSuggestion = "";
+            if (validAlternatives.length > 0) {
+                const alt = validAlternatives[0];
+                altSuggestion = ` (Try [${alt.symbol}] ${alt.name} instead)`;
+                this.showElementDetails(alt);
+            }
+
+            this.dom.statusMessage.textContent = `❌ Dead end! [${badElem.symbol}] ${badElem.name} cannot finish "${this.currentWord}". Tap ↩️ ${undoCountStr}!${altSuggestion}`;
+            this.dom.statusMessage.className = "warning hint-deadend";
+
+            // Pulse the undo button to clearly direct user
+            if (this.dom.undoBtn) {
+                this.dom.undoBtn.classList.remove("pulse-hint");
+                void this.dom.undoBtn.offsetWidth;
+                this.dom.undoBtn.classList.add("pulse-hint");
+                setTimeout(() => this.dom.undoBtn && this.dom.undoBtn.classList.remove("pulse-hint"), 1500);
+            }
+            return;
+        }
+
+        // Current path is valid so far! Find next valid element(s)
+        const spelledSoFar = this.placedElements.map(e => e.symbol).join("").toUpperCase();
+        const validNext = getValidNextElements(this.currentWord, spelledSoFar.length);
+
+        if (!validNext || validNext.length === 0) {
+            if (spelledSoFar === this.currentWord.toUpperCase()) {
+                this.dom.statusMessage.textContent = `🎉 Word is complete!`;
+                this.dom.statusMessage.className = "success";
+            } else {
+                this.dom.statusMessage.textContent = `No valid chemical elements can complete this word from here. Tap ↩️ Undo to step back!`;
+                this.dom.statusMessage.className = "warning";
+            }
+            return;
+        }
+
+        const primaryChoice = validNext[0];
+        const allChoicesStr = validNext.map(e => `[${e.symbol}] ${e.name}`).join(" or ");
+
+        this.dom.statusMessage.textContent = `💡 Hint: Next valid element is ${allChoicesStr} (Atomic #${primaryChoice.number})!`;
+        this.dom.statusMessage.className = "hint-message";
+
+        // Highlight the element in the periodic table and show in inspect card
+        this.showElementDetails(primaryChoice);
+
+        // Flash hint button
+        if (this.dom.hintBtn) {
+            this.dom.hintBtn.classList.remove("pulse-hint");
+            void this.dom.hintBtn.offsetWidth;
+            this.dom.hintBtn.classList.add("pulse-hint");
+            setTimeout(() => this.dom.hintBtn && this.dom.hintBtn.classList.remove("pulse-hint"), 1200);
+        }
+    }
+
     renderTargetWord() {
         if (!this.dom.targetWordDisplay) return;
 
@@ -884,6 +997,8 @@ class ElementSpellerGame {
         let charOffset = 0;
         const target = (this.currentWord || "").toUpperCase();
         const isCurrentSolved = this.wordStates[this.currentWordIdx]?.isSolved;
+        const pathAnalysis = this.analyzeCurrentWordPath();
+        const firstDeadEnd = pathAnalysis.firstDeadEndIndex;
 
         for (let i = 0; i < this.placedElements.length; i++) {
             const elem = this.placedElements[i];
@@ -892,19 +1007,30 @@ class ElementSpellerGame {
             const isMatch = (targetSlice === sym);
             charOffset += sym.length;
 
+            const isDeadEndTile = (firstDeadEnd !== -1 && i >= firstDeadEnd);
+            const isMostRecentDeadEnd = isDeadEndTile && (i === this.placedElements.length - 1);
+
             const tile = document.createElement("div");
-            tile.className = `element-slot filled ${isMatch ? "match" : "mismatch"}`;
+            tile.className = `element-slot filled ${isMatch && !isDeadEndTile ? "match" : "mismatch"} ${isDeadEndTile ? "dead-end" : ""} ${isMostRecentDeadEnd ? "dead-end-latest" : ""}`;
             tile.dataset.symbol = elem.symbol;
             tile.dataset.index = i;
             tile.draggable = (!this.isGameOver && !isCurrentSolved);
-            tile.title = isMatch
-                ? `${elem.name} (${elem.symbol}) matches "${sym}" — drag to reorder or 🗑️ to delete`
-                : `${elem.name} (${elem.symbol}) does not match "${targetSlice || 'end'}" — drag to reorder or 🗑️ to delete`;
+
+            let tileTitle = `${elem.name} (${elem.symbol})`;
+            if (isDeadEndTile) {
+                tileTitle += ` — Impossible path! Cannot finish "${this.currentWord}". Tap ↩️ Undo to remove.`;
+            } else if (isMatch) {
+                tileTitle += ` matches "${sym}" — drag to reorder or 🗑️ to delete`;
+            } else {
+                tileTitle += ` does not match "${targetSlice || 'end'}" — drag to reorder or 🗑️ to delete`;
+            }
+            tile.title = tileTitle;
 
             tile.innerHTML = `
                 <span class="slot-num">${elem.number}</span>
                 <span class="slot-symbol">${elem.symbol}</span>
                 <span class="slot-name">${elem.name}</span>
+                ${isDeadEndTile ? '<span class="slot-deadend-badge" title="Dead end — tap Undo to remove">UNDO</span>' : ''}
                 ${!isCurrentSolved ? `<button class="slot-delete-btn" title="Delete ${elem.name} (&times;)" aria-label="Delete ${elem.name}">&times;</button>` : ''}
             `;
 
@@ -1042,6 +1168,9 @@ class ElementSpellerGame {
         if (this.dom.clearWordBtn) {
             this.dom.clearWordBtn.disabled = !hasPlaced;
         }
+        if (this.dom.hintBtn) {
+            this.dom.hintBtn.disabled = (this.isGameOver || isCurrentSolved);
+        }
     }
 
     deleteElementAtIndex(deleteIndex) {
@@ -1127,9 +1256,14 @@ class ElementSpellerGame {
         if (spelled === target && target.length > 0) {
             this.handleCurrentWordSolved();
         } else {
+            const analysis = this.analyzeCurrentWordPath();
             if (this.placedElements.length === 0) {
                 this.dom.statusMessage.textContent = `Enter elements to spell Word #${this.currentWordIdx + 1} ("${this.currentWord}")!`;
                 this.dom.statusMessage.className = "info";
+            } else if (analysis.isDeadEnd) {
+                const badElem = this.placedElements[analysis.firstDeadEndIndex];
+                this.dom.statusMessage.textContent = `⚠️ [${badElem.symbol}] ${badElem.name} cannot finish "${this.currentWord}" — tap ↩️ Undo to step back!`;
+                this.dom.statusMessage.className = "warning";
             } else if (target.startsWith(spelled)) {
                 this.dom.statusMessage.textContent = `Spelled "${spelled}"... matches so far!`;
                 this.dom.statusMessage.className = "success";
