@@ -1,4 +1,4 @@
-import { symbolToData, nameToData, elementData } from './elements.js';
+import { symbolToData, nameToData, elementData, parseElementInput } from './elements.js';
 
 /**
  * Checks if a word (or suffix) can be spelled using chemical element symbols.
@@ -54,8 +54,8 @@ export function validateElementGuess(word, startIndex, input) {
         return { valid: false, reason: 'Please enter an element name or symbol!' };
     }
 
-    // Lookup element by name or symbol
-    const element = nameToData[clean] || symbolToData[clean];
+    // Lookup element by name, symbol, formatted string, or number
+    const element = parseElementInput(clean);
     if (!element) {
         return { valid: false, reason: `"${input}" is not a recognized chemical element.` };
     }

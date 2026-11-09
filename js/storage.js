@@ -221,7 +221,39 @@ export function saveLocalStats(stats) {
     notifyListeners();
 }
 
-export function recordCompletion(dateStr, puzzleNum, word, won, elementsUsed, solveTimeMs) {
+const DAILY_PROGRESS_PREFIX = "elementspeller_progress_v2_";
+
+export function saveDailyProgress(dateStr, progress) {
+    if (!dateStr) return;
+    try {
+        localStorage.setItem(`${DAILY_PROGRESS_PREFIX}${dateStr}`, JSON.stringify({
+            dateStr,
+            progress,
+            timestamp: Date.now()
+        }));
+    } catch (e) { }
+}
+
+export function loadDailyProgress(dateStr) {
+    if (!dateStr) return null;
+    try {
+        const raw = localStorage.getItem(`${DAILY_PROGRESS_PREFIX}${dateStr}`);
+        if (raw) {
+            const data = JSON.parse(raw);
+            if (data && data.dateStr === dateStr) return data.progress;
+        }
+    } catch (e) { }
+    return null;
+}
+
+export function clearDailyProgress(dateStr) {
+    if (!dateStr) return;
+    try {
+        localStorage.removeItem(`${DAILY_PROGRESS_PREFIX}${dateStr}`);
+    } catch (e) { }
+}
+
+export function recordCompletion(dateStr, puzzleNum, wordOrWords, won, elementsUsedOrWordRecords, solveTimeMs) {
     const existing = memoryHistory[dateStr];
     // If previously completed, preserve best time
     let finalSolveTime = solveTimeMs;
@@ -229,13 +261,19 @@ export function recordCompletion(dateStr, puzzleNum, word, won, elementsUsed, so
         finalSolveTime = Math.min(existing.solveTimeMs, solveTimeMs);
     }
 
+    const isArrayWords = Array.isArray(wordOrWords);
+    const words = isArrayWords ? wordOrWords : [wordOrWords];
+    const primaryWord = isArrayWords ? wordOrWords[0] : wordOrWords;
+
     const record = {
         dateStr,
         puzzleNum,
-        word,
+        word: primaryWord,
+        words: words,
         won: true,
         solveTimeMs: finalSolveTime,
-        elementsUsed,
+        wordRecords: isArrayWords ? elementsUsedOrWordRecords : null,
+        elementsUsed: isArrayWords ? (elementsUsedOrWordRecords?.[0]?.placedElements || []) : elementsUsedOrWordRecords,
         timestamp: Date.now()
     };
 
@@ -248,6 +286,7 @@ export function recordCompletion(dateStr, puzzleNum, word, won, elementsUsed, so
     stats.lastPlayedDate = dateStr;
     saveLocalStats(stats);
     clearActiveState(dateStr);
+    clearDailyProgress(dateStr);
     return record;
 }
 
@@ -261,6 +300,7 @@ export async function resetDailyGameResult(dateStr) {
     } catch (e) { }
 
     clearActiveState(dateStr);
+    clearDailyProgress(dateStr);
     memoryStats = sanitizeStats(memoryStats, memoryHistory);
     try {
         localStorage.setItem(STATS_KEY, JSON.stringify(memoryStats));

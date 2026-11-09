@@ -223,6 +223,19 @@
     transform: translateY(-1px);
 }
 
+.share-btn.secondary {
+    background: #ede9fe;
+    color: #4b0082;
+    border: 1.5px solid #a78bfa;
+}
+
+.share-btn.secondary:hover {
+    background: #ddd6fe;
+    border-color: #7c3aed;
+    color: #3b0764;
+    transform: translateY(-1px);
+}
+
 /* Archive List & Filter Buttons */
 .archive-filters {
     display: flex;
@@ -584,4 +597,313 @@
 .archive-search-input:focus {
     border-color: #4b0082;
     box-shadow: 0 0 5px rgba(75, 0, 130, 0.3);
+}
+
+/* ---------------------------------------------------------------------------
+   Interactive Periodic Table Modal (118 Elements)
+   --------------------------------------------------------------------------- */
+.periodic-modal-card {
+    max-width: 980px;
+    width: 96%;
+    max-height: 94vh;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+}
+
+.pt-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.pt-search-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.pt-search-icon {
+    position: absolute;
+    left: 12px;
+    font-size: 14px;
+    pointer-events: none;
+    color: #8a2be2;
+}
+
+.pt-search-box input {
+    width: 100%;
+    padding: 9px 36px 9px 36px;
+    border: 2px solid #d8bfd8;
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: all 0.2s;
+    box-sizing: border-box;
+}
+
+.pt-search-box input:focus {
+    border-color: #7c3aed;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+}
+
+.pt-clear-btn {
+    position: absolute;
+    right: 10px;
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: #888;
+    cursor: pointer;
+    padding: 4px 8px;
+}
+
+.pt-tip {
+    font-size: 12.5px;
+    color: #6b21a8;
+    font-style: italic;
+    background: #faf5ff;
+    border-left: 3px solid #9333ea;
+    padding: 6px 10px;
+    border-radius: 0 6px 6px 0;
+}
+
+/* Category Legend */
+.pt-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+    font-size: 11px;
+}
+
+.pt-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+/* Category Colors */
+.cat-nonmetal { background: #d1f2d9; border-color: #81c784; color: #1b5e20; }
+.cat-nonmetal .legend-dot { background: #4caf50; }
+
+.cat-noble-gas { background: #f3e8ff; border-color: #c084fc; color: #581c87; }
+.cat-noble-gas .legend-dot { background: #a855f7; }
+
+.cat-alkali { background: #fee2e2; border-color: #f87171; color: #991b1b; }
+.cat-alkali .legend-dot { background: #ef4444; }
+
+.cat-alkaline-earth { background: #ffedd5; border-color: #fb923c; color: #9a3412; }
+.cat-alkaline-earth .legend-dot { background: #f97316; }
+
+.cat-metalloid { background: #ecfccb; border-color: #a3e635; color: #3f6212; }
+.cat-metalloid .legend-dot { background: #84cc16; }
+
+.cat-halogen { background: #cffafe; border-color: #22d3ee; color: #155e75; }
+.cat-halogen .legend-dot { background: #06b6d4; }
+
+.cat-transition { background: #fef9c3; border-color: #facc15; color: #854d0e; }
+.cat-transition .legend-dot { background: #eab308; }
+
+.cat-post-transition { background: #e0e7ff; border-color: #818cf8; color: #3730a3; }
+.cat-post-transition .legend-dot { background: #6366f1; }
+
+.cat-lanthanide { background: #fce7f3; border-color: #f472b6; color: #831843; }
+.cat-lanthanide .legend-dot { background: #ec4899; }
+
+.cat-actinide { background: #ffe4e6; border-color: #fb7185; color: #881337; }
+.cat-actinide .legend-dot { background: #f43f5e; }
+
+.cat-unknown { background: #f1f5f9; border-color: #94a3b8; color: #334155; }
+.cat-unknown .legend-dot { background: #64748b; }
+
+/* Scrollable Periodic Grid Wrapper */
+.pt-scroll-wrapper {
+    overflow-x: auto;
+    overflow-y: auto;
+    padding: 6px 2px;
+    margin-bottom: 12px;
+    border: 1px solid #e9d5ff;
+    border-radius: 10px;
+    background: #fafafa;
+    -webkit-overflow-scrolling: touch;
+}
+
+.periodic-grid {
+    display: grid;
+    grid-template-columns: repeat(18, minmax(42px, 1fr));
+    grid-template-rows: repeat(9, auto);
+    gap: 4px;
+    min-width: 780px;
+    padding: 6px;
+    box-sizing: border-box;
+}
+
+/* Individual Periodic Element Tile */
+.pt-tile {
+    min-height: 46px;
+    border: 1.5px solid;
+    border-radius: 6px;
+    padding: 2px 2px 3px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    font-family: inherit;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.2s ease;
+    box-sizing: border-box;
+    position: relative;
+    user-select: none;
+}
+
+.pt-tile:hover {
+    transform: scale(1.15);
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.pt-tile.selected {
+    border-width: 2.5px !important;
+    border-color: #4b0082 !important;
+    box-shadow: 0 0 0 3px rgba(75, 0, 130, 0.35) !important;
+    z-index: 8;
+    transform: scale(1.05);
+}
+
+.pt-tile.dimmed {
+    opacity: 0.18;
+    transform: scale(0.92);
+}
+
+.pt-tile.highlighted {
+    transform: scale(1.12);
+    z-index: 7;
+    box-shadow: 0 0 10px rgba(124, 58, 237, 0.45);
+    border-color: #7c3aed !important;
+}
+
+.pt-tile.placeholder {
+    background: #f8fafc;
+    border: 1.5px dashed #cbd5e1;
+    color: #64748b;
+    cursor: default;
+}
+
+.pt-tile.placeholder:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.pt-num {
+    font-size: 9.5px;
+    font-weight: 700;
+    align-self: flex-start;
+    padding-left: 2px;
+    line-height: 1;
+    opacity: 0.85;
+}
+
+.pt-sym {
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.pt-name {
+    font-size: 8px;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    padding: 0 1px;
+}
+
+/* Selected Element Inspection Card */
+.pt-inspect-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f5f3ff;
+    border: 2px solid #c4b5fd;
+    border-radius: 12px;
+    padding: 10px 16px;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.pt-inspect-content {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.pt-inspect-symbol {
+    font-size: 32px;
+    font-weight: 900;
+    color: #4b0082;
+    background: #ffffff;
+    border: 2px solid #7c3aed;
+    border-radius: 8px;
+    min-width: 52px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(124, 58, 237, 0.2);
+}
+
+.pt-inspect-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.pt-inspect-name {
+    font-size: 18px;
+    font-weight: 800;
+    color: #4b0082;
+}
+
+.pt-inspect-meta {
+    font-size: 13px;
+    color: #6b21a8;
+    margin-top: 2px;
+}
+
+.pt-use-btn {
+    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.35);
+    transition: all 0.2s;
+}
+
+.pt-use-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.45);
+}
+
+.pt-use-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }

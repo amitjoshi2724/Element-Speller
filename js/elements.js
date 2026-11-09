@@ -479,9 +479,62 @@ export const symbols = Object.keys(elementData);
 // Normalized lowercase maps
 export const symbolToData = {};
 export const nameToData = {};
+export const numberToData = {};
 
 for (const [sym, data] of Object.entries(elementData)) {
     const entry = { symbol: sym, name: data.name, number: data.number };
     symbolToData[sym.toLowerCase()] = entry;
     nameToData[data.name.toLowerCase().trim()] = entry;
+    numberToData[data.number] = entry;
+}
+
+/**
+ * Robust element lookup helper.
+ * Parses pure symbol ('c', 'FE'), pure name ('carbon', 'Iron'),
+ * formatted string ('C - Carbon', 'Fe - Iron', 'Iron (Fe)'),
+ * or atomic number ('6', '#26').
+ */
+export function parseElementInput(input) {
+    if (!input) return null;
+    let s = String(input).trim();
+    if (!s) return null;
+
+    const lower = s.toLowerCase();
+
+    // 1. Direct name lookup
+    if (nameToData[lower]) return nameToData[lower];
+
+    // 2. Direct symbol lookup
+    if (symbolToData[lower]) return symbolToData[lower];
+
+    // 3. Formats like "C - Carbon", "Fe - Iron", "C - Carbon (#6)"
+    const dashMatch = s.match(/^([a-zA-Z]{1,2})\s*[-–:]\s*(.+)$/);
+    if (dashMatch) {
+        const sym = dashMatch[1].toLowerCase();
+        if (symbolToData[sym]) return symbolToData[sym];
+        const name = dashMatch[2].replace(/\s*\(#\d+\)/, '').trim().toLowerCase();
+        if (nameToData[name]) return nameToData[name];
+    }
+
+    // 4. Formats like "Carbon (C)" or "Iron [Fe]"
+    const parenMatch = s.match(/^([a-zA-Z]+)\s*[\(\[]([a-zA-Z]{1,2})[\)\]]$/);
+    if (parenMatch) {
+        const sym = parenMatch[2].toLowerCase();
+        if (symbolToData[sym]) return symbolToData[sym];
+        const name = parenMatch[1].trim().toLowerCase();
+        if (nameToData[name]) return nameToData[name];
+    }
+
+    // 5. Atomic number like "6", "#6"
+    const num = parseInt(s.replace(/^#/, ''), 10);
+    if (!isNaN(num) && numberToData[num]) {
+        return numberToData[num];
+    }
+
+    // 6. First word / token fallback
+    const firstWord = lower.split(/[\s\-–\(\)]+/)[0];
+    if (symbolToData[firstWord]) return symbolToData[firstWord];
+    if (nameToData[firstWord]) return nameToData[firstWord];
+
+    return null;
 }

@@ -3,7 +3,7 @@
  * Full offline PWA support for macOS Dock, iOS Safari, Android, and Desktop Chrome.
  */
 
-const CACHE_NAME = 'element-speller-v1.0.5';
+const CACHE_NAME = 'element-speller-v1.0.6';
 
 const CORE_ASSETS = [
   './',
@@ -14,6 +14,7 @@ const CORE_ASSETS = [
   './css/modals.css',
   './js/app.js',
   './js/elements.js',
+  './js/periodic-table.js',
   './js/words.js',
   './js/speller.js',
   './js/prng.js',

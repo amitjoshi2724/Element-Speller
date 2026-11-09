@@ -71,12 +71,26 @@ body {
     background-color: white;
     border-radius: 15px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    padding: 26px;
-    max-width: 660px;
-    width: 100%;
+    padding: 26px 20px;
+    max-width: 980px;
+    width: 96%;
     text-align: center;
     box-sizing: border-box;
     position: relative;
+    margin: 20px auto;
+}
+
+/* Centered content width for word spelling puzzle controls */
+.word-picker-bar,
+.timer-control-row,
+.target-word-container,
+.solved-card,
+.input-group,
+#status-message,
+#element-details {
+    max-width: 680px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .beaker {
@@ -840,7 +854,10 @@ button.primary-btn:disabled {
 /* Matched vs Unmatched Letters in Target Word Display */
 .matched-chars {
     color: #2e7d32;
-    text-decoration: underline wavy #4caf50 2px;
+    text-decoration: none;
+    font-weight: 700;
+    border-bottom: 3px solid #2e7d32;
+    padding-bottom: 2px;
     transition: color 0.3s;
 }
 
@@ -955,3 +972,255 @@ button.primary-btn:disabled {
 .mode-toggle-btn .mode-icon {
     font-size: 13px;
 }
+
+/* Prevent red spellcheck squiggly underlines on inputs */
+input, textarea {
+    -webkit-spellcheck: none;
+}
+
+/* Inline Hint Periodic Table Button */
+.hint-table-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #f0e6ff;
+    color: #4b0082;
+    border: 1px solid #9370db;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    vertical-align: middle;
+}
+
+.hint-table-btn:hover {
+    background: #4b0082;
+    color: #ffffff;
+}
+
+/* ---------------------------------------------------------------------------
+   Word Tracker Navigation Bar (6 Words per Daily Puzzle)
+   --------------------------------------------------------------------------- */
+.word-picker-bar {
+    background: #fbf9ff;
+    border: 2px solid #e0d4f5;
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin: 12px 0 16px;
+    box-shadow: 0 2px 8px rgba(75, 0, 130, 0.05);
+}
+
+.word-picker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.word-picker-label {
+    color: #4b0082;
+    font-weight: 600;
+}
+
+.word-picker-label strong {
+    font-size: 16px;
+    color: #7c3aed;
+}
+
+.word-picker-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.word-picker-progress {
+    background: #ede9fe;
+    color: #5b21b6;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.word-next-btn {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 4px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+    transition: all 0.2s;
+    animation: pulseGlow 1.8s infinite;
+}
+
+.word-next-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(16, 185, 129, 0.4);
+}
+
+@keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3); }
+    50% { box-shadow: 0 0 12px rgba(16, 185, 129, 0.6); }
+}
+
+.word-pills-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: space-between;
+}
+
+.word-pill {
+    flex: 1 1 calc(16.666% - 8px);
+    min-width: 58px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 6px;
+    background: #ffffff;
+    border: 2px solid #d8bfd8;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.word-pill:hover {
+    border-color: #9370db;
+    background: #f7f2ff;
+    transform: translateY(-1px);
+}
+
+.word-pill.active {
+    border-color: #7c3aed;
+    background: #ede9fe;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
+    transform: translateY(-1px);
+}
+
+.word-pill.solved {
+    border-color: #10b981;
+    background: #ecfdf5;
+}
+
+.word-pill.solved.active {
+    border-color: #059669;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25);
+}
+
+.pill-status {
+    font-size: 13px;
+    font-weight: 700;
+    color: #4b0082;
+    line-height: 1.1;
+}
+
+.word-pill.solved .pill-status {
+    color: #059669;
+}
+
+.pill-word-preview {
+    font-size: 11px;
+    color: #6b7280;
+    margin-top: 3px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.word-pill.solved .pill-word-preview {
+    color: #047857;
+    font-weight: 700;
+}
+
+/* Solved words breakdown in Solved Card */
+.solved-words-breakdown {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 8px;
+    margin: 14px 0 16px;
+    text-align: left;
+}
+
+.solved-breakdown-item {
+    background: #ffffff;
+    border: 1px solid #a7f3d0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+}
+
+.solved-breakdown-word {
+    font-weight: 700;
+    color: #065f46;
+}
+
+.solved-breakdown-elements {
+    display: flex;
+    gap: 4px;
+}
+
+.solved-breakdown-chip {
+    background: #f0e6ff;
+    border: 1px solid #d8bfd8;
+    color: #4b0082;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------------
+   On-Page Periodic Table of Elements Section
+   --------------------------------------------------------------------------- */
+.periodic-table-section {
+    margin: 28px 0 24px;
+    padding: 20px 16px;
+    background: #fbf9ff;
+    border: 2px solid #e0d4f5;
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgba(75, 0, 130, 0.05);
+    text-align: left;
+}
+
+.pt-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.pt-title-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pt-title-group .pt-icon {
+    font-size: 24px;
+}
+
+.pt-heading {
+    margin: 0;
+    font-size: 20px;
+    color: #4b0082;
+    font-weight: 800;
+}
+

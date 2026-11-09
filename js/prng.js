@@ -60,26 +60,87 @@ export function getDateForPuzzleNumber(puzzleNum, epochStr = EPOCH_DATE_STR) {
 }
 
 /**
- * Deterministically pick today's daily word using Mulberry32.
+ * Deterministically pick 6 daily words using Mulberry32.
+ * Picks distinct, engaging words (4-8 letters preferred) deterministically seeded by date.
  */
-export function getDailyWord(dateStr) {
-    const seedVal = hashString(`elementspeller-word-${dateStr}`);
+export function getDailyWords(dateStr, count = 6) {
+    const seedVal = hashString(`elementspeller-words-v2-${dateStr}`);
     const rng = createMulberry32(seedVal);
-    const idx = Math.floor(rng() * WORDS.length);
+    const words = [];
+    const used = new Set();
+
+    // Prefer fun, readable word lengths (4-8 chars) so they fit nicely on screen
+    const preferred = WORDS.filter(w => w.length >= 4 && w.length <= 8);
+    let attempts = 0;
+    while (words.length < count && attempts < 5000) {
+        attempts++;
+        const idx = Math.floor(rng() * preferred.length);
+        const w = preferred[idx];
+        if (!used.has(w)) {
+            used.add(w);
+            words.push(w);
+        }
+    }
+
+    // Fallback if needed
+    while (words.length < count) {
+        const idx = Math.floor(rng() * WORDS.length);
+        const w = WORDS[idx];
+        if (!used.has(w)) {
+            used.add(w);
+            words.push(w);
+        }
+    }
+
     return {
-        word: WORDS[idx],
+        words,
         puzzleNumber: getPuzzleNumber(dateStr),
         dateStr
     };
 }
 
 /**
- * Pick a random word for Unlimited / Practice mode.
+ * Deterministically pick daily word (backward compatible with single word callers).
+ */
+export function getDailyWord(dateStr) {
+    const res = getDailyWords(dateStr, 6);
+    return {
+        word: res.words[0],
+        words: res.words,
+        puzzleNumber: res.puzzleNumber,
+        dateStr
+    };
+}
+
+/**
+ * Pick random words for Practice mode (defaults to 6 words).
+ */
+export function getRandomWords(count = 6) {
+    const preferred = WORDS.filter(w => w.length >= 4 && w.length <= 8);
+    const words = [];
+    const used = new Set();
+    while (words.length < count) {
+        const idx = Math.floor(Math.random() * preferred.length);
+        const w = preferred[idx];
+        if (!used.has(w)) {
+            used.add(w);
+            words.push(w);
+        }
+    }
+    return {
+        words,
+        isPractice: true
+    };
+}
+
+/**
+ * Pick a random word for Practice mode (backward compatible with single word callers).
  */
 export function getRandomWord() {
-    const idx = Math.floor(Math.random() * WORDS.length);
+    const res = getRandomWords(6);
     return {
-        word: WORDS[idx],
+        word: res.words[0],
+        words: res.words,
         isPractice: true
     };
 }
