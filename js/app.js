@@ -31,6 +31,7 @@ class ElementSpellerGame {
         this.puzzleNumber = 1;
         this.isGameOver = false;
         this.isWordRevealed = false;
+        this.hintsUsed = 0;
         this.draggedElementIndex = null;
 
         // Timer & Pause State
@@ -235,6 +236,9 @@ class ElementSpellerGame {
 
     handlePeriodicTableSelect(elem) {
         if (this.isGameOver) return;
+        if (!this.isWordRevealed) {
+            this.revealWordAndStart();
+        }
         if (this.isPaused) {
             this.resumeGame();
         }
@@ -589,6 +593,7 @@ class ElementSpellerGame {
                     }];
 
                     this.isWordRevealed = true;
+                    this.hintsUsed = existingRecord.hintsUsed || 0;
                     this.isGameOver = true;
                     this.solveTimeMs = existingRecord.solveTimeMs || 0;
 
@@ -613,27 +618,29 @@ class ElementSpellerGame {
                     return;
                 }
 
-                // Unplayed 1-word puzzle from past: initialize as 1 word
+                // Unplayed 1-word puzzle from past: initialize as 1 word hidden behind start button
                 this.wordStates = [{
                     word: dailyWord,
                     placedElements: [],
                     isSolved: false,
                     solveTimeMs: null
                 }];
-                this.isWordRevealed = true;
+                this.isWordRevealed = false;
+                this.hintsUsed = 0;
                 this.solveTimeMs = null;
                 this.updateModeUI(true);
                 this.renderWordPicker();
                 this.renderTargetWord();
                 this.renderElementSlots();
-                this.dom.statusMessage.textContent = `Classic 1-word puzzle. Enter elements or tap the periodic table to spell "${dailyWord}".`;
+                this.updateButtonsState();
+                this.dom.statusMessage.textContent = `Classic 1-word puzzle. Click 'Start Game' to reveal the word and begin!`;
                 this.dom.statusMessage.className = "info";
                 if (this.dom.elementInput) {
                     this.dom.elementInput.value = "";
-                    this.dom.elementInput.disabled = false;
-                    this.dom.elementInput.focus();
+                    this.dom.elementInput.disabled = true;
+                    this.dom.elementInput.placeholder = "Click Start to reveal word...";
                 }
-                if (this.dom.submitBtn) this.dom.submitBtn.disabled = false;
+                if (this.dom.submitBtn) this.dom.submitBtn.disabled = true;
                 return;
             }
 
@@ -653,6 +660,7 @@ class ElementSpellerGame {
             if (existingRecord && existingRecord.won && existingRecord.wordRecords && existingRecord.wordRecords.length > 1) {
                 // Completed 6-word puzzle: load the user's exact placed elements
                 this.isWordRevealed = true;
+                this.hintsUsed = existingRecord.hintsUsed || 0;
                 this.isGameOver = true;
                 this.solveTimeMs = existingRecord.solveTimeMs || 0;
 
@@ -727,6 +735,7 @@ class ElementSpellerGame {
             }
             this.currentWordIdx = targetIdx;
             this.elapsedOffsetMs = savedProgress.elapsedTimeMs || 0;
+            this.hintsUsed = savedProgress.hintsUsed || 0;
             this.isWordRevealed = true;
 
             this.renderWordPicker();
@@ -747,14 +756,15 @@ class ElementSpellerGame {
                 this.dom.statusMessage.textContent = `Resumed puzzle! ${solvedCount}/${this.dailyWords.length} words solved (${this.formatElapsed(this.elapsedOffsetMs)} elapsed). Click any word to continue!`;
             } else {
                 this.dom.liveTimerDisplay.textContent = "00:00.0";
-                this.dom.statusMessage.textContent = `Spell all 6 words using chemical elements. Click any word to work on it! (Timer starts on first move)`;
+                this.dom.statusMessage.textContent = `Spell all ${this.dailyWords.length} words using chemical elements. Click any word to work on it!`;
             }
             this.dom.statusMessage.className = "info";
             return;
         }
 
-        // Fresh unstarted state: words are revealed upfront, timer starts on first move
-        this.isWordRevealed = true;
+        // Fresh unstarted state: words hidden behind Start button, timer starts on reveal
+        this.isWordRevealed = false;
+        this.hintsUsed = 0;
         this.stopSolveTimer();
         this.dom.liveTimerDisplay.textContent = "00:00.0";
         this.renderWordPicker();
@@ -763,14 +773,15 @@ class ElementSpellerGame {
 
         if (this.dom.elementInput) {
             this.dom.elementInput.value = "";
-            this.dom.elementInput.disabled = false;
-            this.dom.elementInput.placeholder = "Enter element name or symbol (e.g. Carbon, C)...";
-            this.dom.elementInput.focus();
+            this.dom.elementInput.disabled = true;
+            this.dom.elementInput.placeholder = "Click Start to reveal words...";
         }
         if (this.dom.submitBtn) {
-            this.dom.submitBtn.disabled = false;
+            this.dom.submitBtn.disabled = true;
         }
-        this.dom.statusMessage.textContent = "Spell all 6 words using chemical elements. Click any word to work on it! (Timer starts on first move)";
+        this.updateButtonsState();
+        const countLabel = this.dailyWords.length > 1 ? `all ${this.dailyWords.length} words` : "the target word";
+        this.dom.statusMessage.textContent = `Click 'Start Game & Reveal Words' to reveal ${countLabel} and begin playing!`;
         this.dom.statusMessage.className = "info";
     }
 
@@ -790,6 +801,7 @@ class ElementSpellerGame {
         if (this.dom.submitBtn) {
             this.dom.submitBtn.disabled = false;
         }
+        this.updateButtonsState();
 
         if (!this.timerInterval) {
             this.startSolveTimer(this.elapsedOffsetMs);
@@ -799,6 +811,7 @@ class ElementSpellerGame {
             ? `Timer running! Spell Word ${this.currentWordIdx + 1} of ${count} ("${this.currentWord}").`
             : `Timer running! Spell "${this.currentWord}".`;
         this.dom.statusMessage.className = "info";
+        this.saveCurrentProgress();
     }
 
     startSolveTimer(initialOffsetMs = 0) {
@@ -950,11 +963,16 @@ class ElementSpellerGame {
             pill.type = "button";
             pill.className = `word-pill ${isCurrent ? "active" : ""} ${isSolved ? "solved" : ""}`;
             pill.dataset.index = String(i);
-            pill.title = isSolved ? `Word #${i + 1}: ${word} (Solved)` : `Word #${i + 1}: ${word} (Click to solve)`;
 
+            const displayName = this.isWordRevealed ? word : `Word ${i + 1}`;
+            const pillTitle = !this.isWordRevealed
+                ? `Word #${i + 1} (Hidden until game starts)`
+                : (isSolved ? `Word #${i + 1}: ${word} (Solved)` : `Word #${i + 1}: ${word} (Click to solve)`);
+
+            pill.title = pillTitle;
             const badgeText = isSolved ? `✓ ${i + 1}` : `${i + 1}`;
 
-            pill.innerHTML = `<span class="pill-badge">${badgeText}</span><span class="pill-word-name">${word}</span>`;
+            pill.innerHTML = `<span class="pill-badge">${badgeText}</span><span class="pill-word-name">${displayName}</span>`;
 
             pill.addEventListener("click", () => {
                 this.selectWord(i);
@@ -968,14 +986,23 @@ class ElementSpellerGame {
         if (index < 0 || index >= this.dailyWords.length) return;
         this.currentWordIdx = index;
 
+        const currentWordState = this.wordStates[this.currentWordIdx];
+        if (currentWordState) {
+            currentWordState.hintedDeadEndIndex = null;
+        }
+
         this.renderWordPicker();
         this.renderTargetWord();
         this.renderElementSlots();
         this.updateButtonsState();
 
-        const currentWordState = this.wordStates[this.currentWordIdx];
         if (!this.isGameOver) {
-            if (currentWordState && currentWordState.isSolved) {
+            if (!this.isWordRevealed) {
+                this.dom.statusMessage.textContent = `Selected Word #${index + 1}. Click 'Start Game' to reveal words and begin!`;
+                this.dom.statusMessage.className = "info";
+                if (this.dom.elementInput) this.dom.elementInput.disabled = true;
+                if (this.dom.submitBtn) this.dom.submitBtn.disabled = true;
+            } else if (currentWordState && currentWordState.isSolved) {
                 this.dom.statusMessage.textContent = `Word ${index + 1} ("${this.currentWord}") is already solved! Pick another word or review.`;
                 this.dom.statusMessage.className = "success";
                 if (this.dom.elementInput) this.dom.elementInput.disabled = true;
@@ -1060,10 +1087,16 @@ class ElementSpellerGame {
             return;
         }
 
+        this.hintsUsed = (this.hintsUsed || 0) + 1;
+        this.saveCurrentProgress();
+
         const analysis = this.analyzeCurrentWordPath();
 
         if (analysis.isDeadEnd) {
             // It is impossible with the letters they have already put!
+            currentWordState.hintedDeadEndIndex = analysis.firstDeadEndIndex;
+            this.renderElementSlots();
+
             const badElem = this.placedElements[analysis.firstDeadEndIndex];
             const stepsToUndo = this.placedElements.length - analysis.firstDeadEndIndex;
             const undoCountStr = stepsToUndo > 1 ? `Undo ${stepsToUndo} times` : "Undo";
@@ -1090,6 +1123,9 @@ class ElementSpellerGame {
             return;
         }
 
+        currentWordState.hintedDeadEndIndex = null;
+        this.renderElementSlots();
+
         // Current path is valid so far! Find next valid element(s)
         const spelledSoFar = this.placedElements.map(e => e.symbol).join("").toUpperCase();
         const validNext = getValidNextElements(this.currentWord, spelledSoFar.length);
@@ -1108,7 +1144,7 @@ class ElementSpellerGame {
         const primaryChoice = validNext[0];
         const allChoicesStr = validNext.map(e => `[${e.symbol}] ${e.name}`).join(" or ");
 
-        this.dom.statusMessage.textContent = `💡 Hint: Next valid element is ${allChoicesStr} (Atomic #${primaryChoice.number})!`;
+        this.dom.statusMessage.textContent = `💡 Hint #${this.hintsUsed}: Next valid element is ${allChoicesStr} (Atomic #${primaryChoice.number})!`;
         this.dom.statusMessage.className = "hint-message";
 
         // Highlight the element in the periodic table and show in inspect card
@@ -1126,6 +1162,20 @@ class ElementSpellerGame {
     renderTargetWord() {
         if (!this.dom.targetWordDisplay) return;
 
+        if (!this.isWordRevealed) {
+            const countLabel = this.dailyWords.length > 1 ? `All ${this.dailyWords.length} Words` : "Word";
+            this.dom.targetWordDisplay.innerHTML = `
+                <button id="reveal-word-btn" class="reveal-word-btn" title="Click to reveal target words and start timer">
+                    ▶️ Start Game & Reveal ${countLabel}
+                </button>
+            `;
+            const btn = this.dom.targetWordDisplay.querySelector("#reveal-word-btn");
+            if (btn) {
+                btn.addEventListener("click", () => this.revealWordAndStart());
+            }
+            return;
+        }
+
         const matchedLen = this.getMatchedPrefixLength();
         const matched = this.currentWord.slice(0, matchedLen);
         const remaining = this.currentWord.slice(matchedLen);
@@ -1138,6 +1188,12 @@ class ElementSpellerGame {
         this.updateTrashCanState();
         this.updateButtonsState();
 
+        if (!this.isWordRevealed) {
+            const countLabel = this.dailyWords.length > 1 ? `all ${this.dailyWords.length} words` : "the target word";
+            this.dom.elementSlotsRow.innerHTML = `<span class="empty-tiles-placeholder">Click 'Start Game' above to reveal ${countLabel} and begin playing!</span>`;
+            return;
+        }
+
         if (this.placedElements.length === 0) {
             this.dom.elementSlotsRow.innerHTML = `<span class="empty-tiles-placeholder">Enter elements to spell "${this.currentWord}" (drag to reorder or 🗑️ to delete)</span>`;
             return;
@@ -1146,8 +1202,9 @@ class ElementSpellerGame {
         let charOffset = 0;
         const target = (this.currentWord || "").toUpperCase();
         const isCurrentSolved = this.wordStates[this.currentWordIdx]?.isSolved;
-        const pathAnalysis = this.analyzeCurrentWordPath();
-        const firstDeadEnd = pathAnalysis.firstDeadEndIndex;
+        const currentWordState = this.wordStates[this.currentWordIdx];
+        const hintedDeadEnd = currentWordState?.hintedDeadEndIndex;
+        const hasHintedDeadEnd = (hintedDeadEnd !== undefined && hintedDeadEnd !== null);
 
         for (let i = 0; i < this.placedElements.length; i++) {
             const elem = this.placedElements[i];
@@ -1156,18 +1213,17 @@ class ElementSpellerGame {
             const isMatch = (targetSlice === sym);
             charOffset += sym.length;
 
-            const isDeadEndTile = (firstDeadEnd !== -1 && i >= firstDeadEnd);
-            const isMostRecentDeadEnd = isDeadEndTile && (i === this.placedElements.length - 1);
+            const isDeadEndTile = hasHintedDeadEnd && (i >= hintedDeadEnd);
 
             const tile = document.createElement("div");
-            tile.className = `element-slot filled ${isMatch && !isDeadEndTile ? "match" : "mismatch"} ${isDeadEndTile ? "dead-end" : ""} ${isMostRecentDeadEnd ? "dead-end-latest" : ""}`;
+            tile.className = `element-slot filled ${isMatch ? "match" : "mismatch"} ${isDeadEndTile ? "dead-end-hinted" : ""}`;
             tile.dataset.symbol = elem.symbol;
             tile.dataset.index = i;
             tile.draggable = (!this.isGameOver && !isCurrentSolved);
 
             let tileTitle = `${elem.name} (${elem.symbol})`;
             if (isDeadEndTile) {
-                tileTitle += ` — Impossible path! Cannot finish "${this.currentWord}". Tap ↩️ Undo to remove.`;
+                tileTitle += ` — Dead-end element identified by hint (cannot finish "${this.currentWord}"). Undo to step back!`;
             } else if (isMatch) {
                 tileTitle += ` matches "${sym}" — drag to reorder or 🗑️ to delete`;
             } else {
@@ -1179,7 +1235,6 @@ class ElementSpellerGame {
                 <span class="slot-num">${elem.number}</span>
                 <span class="slot-symbol">${elem.symbol}</span>
                 <span class="slot-name">${elem.name}</span>
-                ${isDeadEndTile ? '<span class="slot-deadend-badge" title="Dead end — tap Undo to remove">UNDO</span>' : ''}
                 ${!isCurrentSolved ? `<button class="slot-delete-btn" title="Delete ${elem.name} (&times;)" aria-label="Delete ${elem.name}">&times;</button>` : ''}
             `;
 
@@ -1309,7 +1364,8 @@ class ElementSpellerGame {
 
     updateButtonsState() {
         const isCurrentSolved = this.wordStates[this.currentWordIdx]?.isSolved;
-        const hasPlaced = this.placedElements.length > 0 && !this.isGameOver && !isCurrentSolved && !this.isPaused;
+        const isPlayable = this.isWordRevealed && !this.isGameOver && !this.isPaused;
+        const hasPlaced = this.placedElements.length > 0 && isPlayable && !isCurrentSolved;
 
         if (this.dom.undoBtn) {
             this.dom.undoBtn.disabled = !hasPlaced;
@@ -1318,10 +1374,10 @@ class ElementSpellerGame {
             this.dom.clearWordBtn.disabled = !hasPlaced;
         }
         if (this.dom.hintBtn) {
-            this.dom.hintBtn.disabled = (this.isGameOver || isCurrentSolved || this.isPaused);
+            this.dom.hintBtn.disabled = (!this.isWordRevealed || this.isGameOver || isCurrentSolved || this.isPaused);
         }
         if (this.dom.pauseBtn) {
-            this.dom.pauseBtn.disabled = this.isGameOver;
+            this.dom.pauseBtn.disabled = (!this.isWordRevealed || this.isGameOver);
         }
     }
 
@@ -1329,6 +1385,11 @@ class ElementSpellerGame {
         const isCurrentSolved = this.wordStates[this.currentWordIdx]?.isSolved;
         if (this.isGameOver || isCurrentSolved) return;
         if (deleteIndex < 0 || deleteIndex >= this.placedElements.length) return;
+
+        const currentWordState = this.wordStates[this.currentWordIdx];
+        if (currentWordState) {
+            currentWordState.hintedDeadEndIndex = null;
+        }
 
         const deletedElem = this.placedElements[deleteIndex];
         this.placedElements.splice(deleteIndex, 1);
@@ -1387,7 +1448,10 @@ class ElementSpellerGame {
             return;
         }
 
-        // Place element down freely
+        // Place element down freely and clear any previous dead-end hint marker
+        if (currentWordState) {
+            currentWordState.hintedDeadEndIndex = null;
+        }
         this.placedElements.push(elem);
 
         this.renderTargetWord();
@@ -1411,14 +1475,9 @@ class ElementSpellerGame {
         if (spelled === target && target.length > 0) {
             this.handleCurrentWordSolved();
         } else {
-            const analysis = this.analyzeCurrentWordPath();
             if (this.placedElements.length === 0) {
                 this.dom.statusMessage.textContent = `Enter elements to spell Word #${this.currentWordIdx + 1} ("${this.currentWord}")!`;
                 this.dom.statusMessage.className = "info";
-            } else if (analysis.isDeadEnd) {
-                const badElem = this.placedElements[analysis.firstDeadEndIndex];
-                this.dom.statusMessage.textContent = `⚠️ [${badElem.symbol}] ${badElem.name} cannot finish "${this.currentWord}" — tap ↩️ Undo to step back!`;
-                this.dom.statusMessage.className = "warning";
             } else if (target.startsWith(spelled)) {
                 this.dom.statusMessage.textContent = `Spelled "${spelled}"... matches so far!`;
                 this.dom.statusMessage.className = "success";
@@ -1435,6 +1494,7 @@ class ElementSpellerGame {
         const currentWord = this.currentWord;
         const state = this.wordStates[wordIdx];
         state.isSolved = true;
+        state.hintedDeadEndIndex = null;
         state.placedElements = [...this.placedElements];
 
         this.renderWordPicker();
@@ -1493,7 +1553,8 @@ class ElementSpellerGame {
                     isSolved: ws.isSolved,
                     solveTimeMs: ws.solveTimeMs
                 })),
-                this.solveTimeMs
+                this.solveTimeMs,
+                this.hintsUsed || 0
             );
             clearDailyProgress(this.currentDateStr);
         }
@@ -1555,6 +1616,12 @@ class ElementSpellerGame {
     handleUndo() {
         const isCurrentSolved = this.wordStates[this.currentWordIdx]?.isSolved;
         if (this.isGameOver || isCurrentSolved || this.placedElements.length === 0) return;
+
+        const currentWordState = this.wordStates[this.currentWordIdx];
+        if (currentWordState) {
+            currentWordState.hintedDeadEndIndex = null;
+        }
+
         const removed = this.placedElements.pop();
 
         this.renderTargetWord();
@@ -1576,6 +1643,11 @@ class ElementSpellerGame {
     handleClearWord() {
         const isCurrentSolved = this.wordStates[this.currentWordIdx]?.isSolved;
         if (this.isGameOver || isCurrentSolved || this.placedElements.length === 0) return;
+
+        const currentWordState = this.wordStates[this.currentWordIdx];
+        if (currentWordState) {
+            currentWordState.hintedDeadEndIndex = null;
+        }
 
         this.placedElements = [];
         this.renderTargetWord();
@@ -1616,7 +1688,8 @@ class ElementSpellerGame {
         }
 
         this.isGameOver = false;
-        this.isWordRevealed = true;
+        this.isWordRevealed = false;
+        this.hintsUsed = 0;
         this.isPaused = false;
         this.currentWordIdx = 0;
         this.solveTimeMs = null;
@@ -1628,7 +1701,7 @@ class ElementSpellerGame {
         if (this.dom.pauseBtn) {
             this.dom.pauseBtn.classList.remove("is-paused");
             this.dom.pauseBtn.title = "Pause game & timer";
-            this.dom.pauseBtn.disabled = false;
+            this.dom.pauseBtn.disabled = true;
         }
         if (this.dom.pauseBtnIcon) this.dom.pauseBtnIcon.textContent = "⏸️";
         if (this.dom.pauseBtnText) this.dom.pauseBtnText.textContent = "Pause";
@@ -1653,15 +1726,14 @@ class ElementSpellerGame {
 
         if (this.dom.elementInput) {
             this.dom.elementInput.value = "";
-            this.dom.elementInput.disabled = false;
-            this.dom.elementInput.placeholder = "Enter element name or symbol (e.g. Carbon, C)...";
-            this.dom.elementInput.focus();
+            this.dom.elementInput.disabled = true;
+            this.dom.elementInput.placeholder = "Click Start to reveal words...";
         }
         if (this.dom.submitBtn) {
-            this.dom.submitBtn.disabled = false;
+            this.dom.submitBtn.disabled = true;
         }
 
-        this.dom.statusMessage.textContent = "Puzzle reset! Choose any word and enter elements to start. (Timer starts on first move)";
+        this.dom.statusMessage.textContent = "Puzzle reset! Click 'Start Game' to reveal words and begin solving.";
         this.dom.statusMessage.className = "info";
 
         if (this.dom.archiveModal.classList.contains("active")) {
@@ -1687,6 +1759,7 @@ class ElementSpellerGame {
             currentWordIdx: this.currentWordIdx,
             wordStates: cleanWordStates,
             elapsedTimeMs: elapsed,
+            hintsUsed: this.hintsUsed || 0,
             timestamp: Date.now()
         });
     }
@@ -1732,12 +1805,16 @@ class ElementSpellerGame {
             ? this.solveTimeMs
             : (rec && rec.solveTimeMs > 0 ? rec.solveTimeMs : null);
         const isSolved = this.isGameOver || (rec && rec.won);
+        const hintsCount = (this.hintsUsed !== undefined && this.hintsUsed > 0)
+            ? this.hintsUsed
+            : (rec?.hintsUsed || 0);
 
         if (this.dom.statsPuzzleTime) {
+            const hintBadge = hintsCount > 0 ? ` (💡 ${hintsCount} ${hintsCount === 1 ? 'hint' : 'hints'})` : "";
             if (isSolved && solveMs) {
-                this.dom.statsPuzzleTime.textContent = `⏱️ ${formatTimeMs(solveMs)}`;
+                this.dom.statsPuzzleTime.textContent = `⏱️ ${formatTimeMs(solveMs)}${hintBadge}`;
             } else if (this.isWordRevealed && !this.isGameOver) {
-                this.dom.statsPuzzleTime.textContent = "⏱️ In Progress";
+                this.dom.statsPuzzleTime.textContent = `⏱️ In Progress${hintsCount > 0 ? ` (💡 ${hintsCount})` : ''}`;
             } else {
                 this.dom.statsPuzzleTime.textContent = "⏱️ Not Started";
             }
@@ -1745,13 +1822,16 @@ class ElementSpellerGame {
 
         if (this.dom.statsPuzzleStatus) {
             const totalWords = this.dailyWords.length;
+            const hintsSuffix = hintsCount > 0 ? ` • 💡 ${hintsCount} hints used` : "";
             if (isSolved) {
-                this.dom.statsPuzzleStatus.textContent = totalWords > 1 ? `🎉🧪 All ${totalWords} words solved!` : "🎉🧪 Word solved!";
+                this.dom.statsPuzzleStatus.textContent = totalWords > 1
+                    ? `🎉🧪 All ${totalWords} words solved!${hintsSuffix}`
+                    : `🎉🧪 Word solved!${hintsSuffix}`;
             } else if (this.isWordRevealed) {
                 const solvedCount = this.wordStates.filter(s => s.isSolved).length;
-                this.dom.statsPuzzleStatus.textContent = `${solvedCount} of ${totalWords} words solved`;
+                this.dom.statsPuzzleStatus.textContent = `${solvedCount} of ${totalWords} words solved${hintsSuffix}`;
             } else {
-                this.dom.statsPuzzleStatus.textContent = "Click 'Reveal' to begin playing!";
+                this.dom.statsPuzzleStatus.textContent = "Click 'Start Game' to reveal words and begin playing!";
             }
         }
     }
@@ -1772,6 +1852,11 @@ class ElementSpellerGame {
         const solvedCount = (this.wordStates && this.wordStates.length > 0)
             ? this.wordStates.filter(s => s.isSolved).length
             : (isSolved ? totalWords : 0);
+
+        const hintsCount = (this.hintsUsed !== undefined && this.hintsUsed > 0)
+            ? this.hintsUsed
+            : (rec?.hintsUsed || 0);
+        const hintLine = `💡 Hints: ${hintsCount}`;
 
         let timeHeader;
         if (solveMs) {
@@ -1810,7 +1895,7 @@ class ElementSpellerGame {
             });
         }
 
-        const shareText = `🧪 ${puzzleTag}\n${timeHeader}\n\n${lines.join("\n")}\n\nhttps://amitjoshi2724.github.io/Element-Speller/`;
+        const shareText = `🧪 ${puzzleTag}\n${timeHeader}\n${hintLine}\n\n${lines.join("\n")}\n\nhttps://amitjoshi2724.github.io/Element-Speller/`;
 
         navigator.clipboard.writeText(shareText).then(() => {
             if (targetBtn) {
@@ -1974,7 +2059,9 @@ class ElementSpellerGame {
 
             if (record && record.won) {
                 statusClass = "status-won";
-                statusTag = `⭐ ${formatTimeMs(record.solveTimeMs)}`;
+                const hintsCount = record.hintsUsed || 0;
+                const hintTag = hintsCount > 0 ? ` (💡${hintsCount})` : "";
+                statusTag = `⭐ ${formatTimeMs(record.solveTimeMs)}${hintTag}`;
             }
 
             cellsHtml.push(`
@@ -2047,9 +2134,11 @@ class ElementSpellerGame {
                 const rec = item.record;
                 const isMulti = rec && rec.wordRecords && Array.isArray(rec.wordRecords) && rec.wordRecords.length > 1;
                 const count = isMulti ? rec.wordRecords.length : 1;
+                const hintsCount = rec?.hintsUsed || 0;
+                const hintsStr = hintsCount > 0 ? ` • 💡 ${hintsCount} ${hintsCount === 1 ? 'hint' : 'hints'}` : "";
                 badgeText = isMulti
-                    ? `⭐🧪 Solved ${count}/${count} (${formatTimeMs(rec.solveTimeMs)})`
-                    : `⭐🧪 Solved 1/1 (${formatTimeMs(rec.solveTimeMs)})`;
+                    ? `⭐🧪 Solved ${count}/${count} (${formatTimeMs(rec.solveTimeMs)})${hintsStr}`
+                    : `⭐🧪 Solved 1/1 (${formatTimeMs(rec.solveTimeMs)})${hintsStr}`;
             }
             return `
                 <div class="archive-item">

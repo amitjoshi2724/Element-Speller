@@ -350,75 +350,49 @@ h1 {
     box-shadow: 0 6px 14px rgba(245, 158, 11, 0.25);
 }
 
-/* Dead-end / Impossible element card (cannot lead to a valid spelling of target word) */
-.element-slot.filled.dead-end {
+/* Dead-end indicator shown ONLY when the player explicitly requests a Hint */
+.element-slot.filled.dead-end-hinted {
     border-color: #ef4444 !important;
-    border-style: solid !important;
-    background-color: #fef2f2 !important;
-    color: #991b1b !important;
-    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.35), 0 4px 10px rgba(239, 68, 68, 0.2) !important;
-    animation: deadEndShake 0.4s ease;
-    overflow: hidden;
+    background-color: #fff1f2 !important;
+    box-shadow: 0 0 0 2.5px rgba(239, 68, 68, 0.45), 0 4px 12px rgba(239, 68, 68, 0.25) !important;
+    animation: deadEndGentlyPulse 0.4s ease;
+    overflow: visible !important;
 }
 
-.element-slot.filled.dead-end .slot-name {
-    color: #b91c1c !important;
-}
-
-.element-slot.filled.dead-end .slot-num {
-    color: #dc2626 !important;
-}
-
-/* Red Slash running diagonally across the element card */
-.element-slot.filled.dead-end::before {
-    content: "";
+/* Floating red "✕" circle sitting neatly above the element card */
+.element-slot.filled.dead-end-hinted::before {
+    content: "✕";
     position: absolute;
-    top: 50%;
-    left: -20%;
-    width: 140%;
-    height: 4px;
+    top: -16px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 20px;
+    height: 20px;
     background: #ef4444;
-    transform: translateY(-50%) rotate(-45deg);
-    border-radius: 2px;
-    box-shadow: 0 0 4px rgba(239, 68, 68, 0.9), 0 1px 2px rgba(0, 0, 0, 0.35);
-    pointer-events: none;
-    z-index: 6;
-}
-
-/* Most recent dead-end card glows to clearly show player which to undo */
-.element-slot.filled.dead-end-latest {
-    box-shadow: 0 0 0 3px #ef4444, 0 6px 16px rgba(239, 68, 68, 0.45) !important;
-    transform: scale(1.08) !important;
-}
-
-.element-slot.filled.dead-end-latest::before {
-    height: 5px;
-    background: #dc2626;
-    box-shadow: 0 0 8px rgba(220, 38, 38, 0.95), 0 1px 3px rgba(0, 0, 0, 0.4);
-}
-
-.slot-deadend-badge {
-    position: absolute;
-    bottom: -6px;
-    right: -6px;
-    background: #dc2626;
     color: #ffffff;
-    font-size: 0.58rem;
-    font-weight: 800;
-    border-radius: 9999px;
-    padding: 1px 5px;
-    border: 1.5px solid #ffffff;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    line-height: 1.2;
-    z-index: 7;
+    font-size: 0.72rem;
+    font-weight: 900;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 20px;
+    text-align: center;
+    border: 2px solid #ffffff;
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.5);
+    z-index: 10;
     pointer-events: none;
-    letter-spacing: 0.5px;
+    animation: floatPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-@keyframes deadEndShake {
-    0%, 100% { transform: scale(1.05) translateX(0); }
-    20%, 60% { transform: scale(1.05) translateX(-4px) rotate(-1.5deg); }
-    40%, 80% { transform: scale(1.05) translateX(4px) rotate(1.5deg); }
+@keyframes floatPop {
+    0% { transform: translateX(-50%) scale(0.4) translateY(6px); opacity: 0; }
+    100% { transform: translateX(-50%) scale(1) translateY(0); opacity: 1; }
+}
+
+@keyframes deadEndGentlyPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.06); }
 }
 
 /* Drag-over target indicator when reordering cards */

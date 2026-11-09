@@ -40,6 +40,7 @@ export const DEFAULT_STATS = {
     maxStreak: 0,
     bestTimeMs: null,
     totalTimeMs: 0,
+    totalHintsUsed: 0,
     lastPlayedDate: null,
     // Solve time distribution bins
     distribution: {
@@ -175,6 +176,7 @@ function sanitizeStats(stats, history) {
     if (entries.length > 0) {
         let won = 0;
         let totalTime = 0;
+        let totalHints = 0;
         let bestTime = null;
         const dist = {
             "< 10s": 0,
@@ -188,6 +190,7 @@ function sanitizeStats(stats, history) {
         for (const r of entries) {
             if (r.won) {
                 won++;
+                if (r.hintsUsed) totalHints += r.hintsUsed;
                 if (r.solveTimeMs && r.solveTimeMs > 0) {
                     totalTime += r.solveTimeMs;
                     bestTime = (bestTime === null) ? r.solveTimeMs : Math.min(bestTime, r.solveTimeMs);
@@ -201,6 +204,7 @@ function sanitizeStats(stats, history) {
         clean.won = won;
         clean.bestTimeMs = bestTime;
         clean.totalTimeMs = totalTime;
+        clean.totalHintsUsed = totalHints;
         clean.distribution = dist;
 
         const { currentStreak, maxStreak } = computeStreaksFromHistory(history);
@@ -286,7 +290,7 @@ export function clearDailyProgress(dateStr) {
     }
 }
 
-export function recordCompletion(dateStr, puzzleNum, wordOrWords, won, elementsUsedOrWordRecords, solveTimeMs) {
+export function recordCompletion(dateStr, puzzleNum, wordOrWords, won, elementsUsedOrWordRecords, solveTimeMs, hintsUsed = 0) {
     const existing = memoryHistory[dateStr];
     const isArrayWords = Array.isArray(wordOrWords);
     const incomingCount = isArrayWords ? wordOrWords.length : 1;
@@ -308,6 +312,7 @@ export function recordCompletion(dateStr, puzzleNum, wordOrWords, won, elementsU
         words: words,
         won: true,
         solveTimeMs: finalSolveTime,
+        hintsUsed: (hintsUsed !== undefined && hintsUsed !== null) ? hintsUsed : (existing?.hintsUsed || 0),
         wordRecords: isArrayWords ? elementsUsedOrWordRecords : null,
         elementsUsed: isArrayWords ? (elementsUsedOrWordRecords?.[0]?.placedElements || []) : elementsUsedOrWordRecords,
         timestamp: Date.now()
