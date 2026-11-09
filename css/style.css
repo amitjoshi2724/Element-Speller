@@ -40,12 +40,18 @@ body {
 }
 
 .nav-brand-icon {
-    width: clamp(1.25rem, 2.6vw, 1.6rem);
-    height: clamp(1.25rem, 2.6vw, 1.6rem);
-    border-radius: clamp(3px, 0.6vw, 5px);
+    width: clamp(1.85rem, 3.8vw, 2.35rem);
+    height: clamp(1.85rem, 3.8vw, 2.35rem);
+    border-radius: clamp(5px, 0.8vw, 7px);
     object-fit: cover;
     flex-shrink: 0;
-    box-shadow: 0 1px 4px rgba(15, 30, 59, 0.25);
+    box-shadow: 0 2px 6px rgba(15, 30, 59, 0.3);
+    border: 1px solid rgba(147, 112, 219, 0.3);
+    transition: transform 0.2s ease;
+}
+
+.nav-brand-icon:hover {
+    transform: scale(1.06);
 }
 
 .nav-links-group {
@@ -95,26 +101,26 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    margin: clamp(0.2rem, 1vw, 0.45rem) auto clamp(0.5rem, 1.2vw, 0.75rem);
+    margin: clamp(0.35rem, 1.2vw, 0.75rem) auto clamp(0.45rem, 1.4vw, 0.8rem);
     width: 100%;
 }
 
 .main-logo-img {
-    width: clamp(12rem, 32vw, 16.5rem);
-    max-width: 90%;
+    width: clamp(16rem, 45vw, 24rem);
+    max-width: 92%;
     height: auto;
-    max-height: clamp(4.5rem, 12vw, 7rem);
-    border-radius: clamp(0.4rem, 1vw, 0.65rem);
-    box-shadow: 0 4px 14px rgba(15, 30, 59, 0.2);
-    border: 1px solid rgba(147, 112, 219, 0.25);
+    max-height: clamp(5.5rem, 15vw, 8rem);
+    border-radius: clamp(0.5rem, 1.2vw, 0.75rem);
+    box-shadow: 0 6px 20px rgba(15, 30, 59, 0.22);
+    border: 1.5px solid rgba(147, 112, 219, 0.3);
     object-fit: contain;
     transition: transform 0.25s ease, box-shadow 0.25s ease;
     display: block;
 }
 
 .main-logo-img:hover {
-    transform: scale(1.02);
-    box-shadow: 0 6px 18px rgba(15, 30, 59, 0.28);
+    transform: scale(1.03);
+    box-shadow: 0 8px 24px rgba(15, 30, 59, 0.3);
 }
 
 .visually-hidden {
@@ -1584,6 +1590,11 @@ input, textarea {
    Game column on the left, full Periodic Table on the right with no scrolling
    ========================================================================== */
 @media (min-width: 1000px) {
+    .mode-nav-bar {
+        width: min(98vw, 90rem);
+        max-width: 1440px;
+    }
+
     .container {
         width: min(98vw, 90rem);
         max-width: 1440px;
@@ -1591,12 +1602,12 @@ input, textarea {
     }
 
     .main-logo-container {
-        margin: 0.15rem auto 0.35rem;
+        margin: 0.25rem auto 0.45rem;
     }
 
     .main-logo-img {
-        width: clamp(10rem, 18vw, 13.5rem);
-        max-height: 3.5rem;
+        width: clamp(18rem, 28vw, 24rem);
+        max-height: 5.5rem;
     }
 
     .puzzle-meta-badge {
