@@ -179,10 +179,18 @@
                             <span class="pt-icon">⚛️</span>
                             <h2 class="pt-heading">Periodic Table of Elements</h2>
                         </div>
-                        <button type="button" id="pt-toggle-btn" class="pt-toggle-btn" aria-expanded="true"
-                            title="Toggle periodic table visibility">
-                            <span id="pt-toggle-icon">▾</span> <span id="pt-toggle-label">Hide Table</span>
-                        </button>
+                        <div class="pt-header-actions">
+                            <div class="pt-zoom-toolbar" role="group" aria-label="Periodic table zoom and pan controls">
+                                <button type="button" id="pt-zoom-out-btn" class="pt-zoom-btn" title="Zoom out (−)" aria-label="Zoom out">🔍−</button>
+                                <span id="pt-zoom-display" class="pt-zoom-display" title="Current zoom level">100%</span>
+                                <button type="button" id="pt-zoom-in-btn" class="pt-zoom-btn" title="Zoom in (＋)" aria-label="Zoom in">🔍＋</button>
+                                <button type="button" id="pt-zoom-reset-btn" class="pt-zoom-btn reset" title="Reset zoom and center view" aria-label="Reset zoom">⟲ Reset</button>
+                            </div>
+                            <button type="button" id="pt-toggle-btn" class="pt-toggle-btn" aria-expanded="true"
+                                title="Toggle periodic table visibility">
+                                <span id="pt-toggle-icon">▾</span> <span id="pt-toggle-label">Hide Table</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div id="pt-content-body" class="pt-content-body">
@@ -236,10 +244,17 @@
                             <span class="pt-legend-item cat-unknown"><span class="legend-dot"></span>Unknown</span>
                         </div>
 
-                        <!-- Scrollable Grid Wrapper -->
-                        <div class="pt-scroll-wrapper">
-                            <div class="periodic-grid" id="periodic-grid">
-                                <!-- Populated dynamically with all 118 elements -->
+                        <!-- Interactive Navigation Hint -->
+                        <div class="pt-pan-hint" id="pt-pan-hint">
+                            <span>🖐️ <strong>Drag</strong> to move • 🔍 <strong>Scroll / Pinch</strong> to zoom • <strong>Click</strong> element to place</span>
+                        </div>
+
+                        <!-- Scrollable Grid Wrapper / Interactive Pan-Zoom Viewport -->
+                        <div class="pt-scroll-wrapper pt-viewport" id="pt-viewport">
+                            <div class="pt-canvas" id="pt-canvas">
+                                <div class="periodic-grid" id="periodic-grid">
+                                    <!-- Populated dynamically with all 118 elements -->
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -155,6 +155,13 @@ export const PERIODIC_ELEMENTS = [
 export class PeriodicTable {
     constructor(options = {}) {
         this.gridContainer = options.gridContainer || document.getElementById('periodic-grid');
+        this.viewport = options.viewport || document.getElementById('pt-viewport') || document.querySelector('.pt-scroll-wrapper');
+        this.canvas = options.canvas || document.getElementById('pt-canvas');
+        this.zoomInBtn = options.zoomInBtn || document.getElementById('pt-zoom-in-btn');
+        this.zoomOutBtn = options.zoomOutBtn || document.getElementById('pt-zoom-out-btn');
+        this.zoomResetBtn = options.zoomResetBtn || document.getElementById('pt-zoom-reset-btn');
+        this.zoomDisplay = options.zoomDisplay || document.getElementById('pt-zoom-display');
+
         this.inspectSymbol = options.inspectSymbol || document.getElementById('pt-inspect-symbol');
         this.inspectName = options.inspectName || document.getElementById('pt-inspect-name');
         this.inspectMeta = options.inspectMeta || document.getElementById('pt-inspect-meta');
@@ -166,6 +173,23 @@ export class PeriodicTable {
         this.selectedElement = null;
         this.tileElements = [];
 
+        // Pan & Zoom state
+        this.scale = 1.0;
+        this.panX = 0;
+        this.panY = 0;
+        this.minScale = 0.6;
+        this.maxScale = 3.5;
+        this.isDragging = false;
+        this.hasDragged = false;
+        this.dragStartX = 0;
+        this.dragStartY = 0;
+        this.initialPanX = 0;
+        this.initialPanY = 0;
+        this.activePointers = new Map();
+        this.pinchStartDist = null;
+        this.pinchStartScale = 1.0;
+        this.pinchMidpoint = { x: 0, y: 0 };
+
         this.init();
     }
 
@@ -174,6 +198,7 @@ export class PeriodicTable {
         this.renderGrid();
         this.setupSearch();
         this.setupUseButton();
+        this.setupPanAndZoom();
 
         // Default inspection to Carbon (#6)
         const carbon = PERIODIC_ELEMENTS.find(e => e.s === 'C');
@@ -230,11 +255,22 @@ export class PeriodicTable {
                 <span class="pt-name">${elemName}</span>
             `;
 
-            tile.addEventListener('click', () => {
+            tile.addEventListener('click', (e) => {
+                // If user dragged to pan, suppress click
+                if (this.hasDragged) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
                 this.selectElement(elem, data);
             });
 
-            tile.addEventListener('dblclick', () => {
+            tile.addEventListener('dblclick', (e) => {
+                if (this.hasDragged) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
                 this.selectElement(elem, data);
                 if (this.onSelectElement) {
                     this.onSelectElement({ symbol: elem.s, name: elemName, number: elem.n });
@@ -309,6 +345,7 @@ export class PeriodicTable {
 
             if (firstMatch) {
                 this.selectElement(firstMatch.elem, firstMatch.data);
+                this.centerOnElement(firstMatch.elem);
             }
         };
 
@@ -336,6 +373,216 @@ export class PeriodicTable {
                 });
             }
         });
+    }
+
+    setupPanAndZoom() {
+        if (!this.viewport || !this.canvas) return;
+
+        // Button zoom controls
+        if (this.zoomInBtn) {
+            this.zoomInBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.zoomIn();
+            });
+        }
+        if (this.zoomOutBtn) {
+            this.zoomOutBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.zoomOut();
+            });
+        }
+        if (this.zoomResetBtn) {
+            this.zoomResetBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.resetZoom();
+            });
+        }
+
+        // Mouse wheel zoom centered on cursor
+        this.viewport.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const factor = e.deltaY < 0 ? 1.15 : 0.87;
+            this.zoomAt(this.scale * factor, e.clientX, e.clientY, false);
+        }, { passive: false });
+
+        // Pointer Events (unified Mouse & Touch pan + multi-touch pinch)
+        this.viewport.addEventListener('pointerdown', (e) => {
+            this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+            if (this.activePointers.size === 1) {
+                this.isDragging = true;
+                this.hasDragged = false;
+                this.dragStartX = e.clientX;
+                this.dragStartY = e.clientY;
+                this.initialPanX = this.panX;
+                this.initialPanY = this.panY;
+                this.viewport.classList.add('is-dragging');
+                try {
+                    this.viewport.setPointerCapture(e.pointerId);
+                } catch (err) {}
+            } else if (this.activePointers.size === 2) {
+                this.isDragging = false;
+                this.hasDragged = true;
+                const pts = Array.from(this.activePointers.values());
+                this.pinchStartDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+                this.pinchStartScale = this.scale;
+                this.pinchMidpoint = {
+                    x: (pts[0].x + pts[1].x) / 2,
+                    y: (pts[0].y + pts[1].y) / 2
+                };
+            }
+        });
+
+        this.viewport.addEventListener('pointermove', (e) => {
+            if (!this.activePointers.has(e.pointerId)) return;
+            this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+            if (this.activePointers.size === 2 && this.pinchStartDist) {
+                const pts = Array.from(this.activePointers.values());
+                const curDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+                if (curDist > 10) {
+                    const ratio = curDist / this.pinchStartDist;
+                    const newScale = this.pinchStartScale * ratio;
+                    this.zoomAt(newScale, this.pinchMidpoint.x, this.pinchMidpoint.y, false);
+                }
+            } else if (this.isDragging && this.activePointers.size === 1) {
+                const dx = e.clientX - this.dragStartX;
+                const dy = e.clientY - this.dragStartY;
+                if (Math.hypot(dx, dy) > 5) {
+                    this.hasDragged = true;
+                }
+                this.panX = this.initialPanX + dx;
+                this.panY = this.initialPanY + dy;
+                this.clampPan();
+                this.applyTransform(false);
+            }
+        });
+
+        const handlePointerEnd = (e) => {
+            this.activePointers.delete(e.pointerId);
+            try {
+                this.viewport.releasePointerCapture(e.pointerId);
+            } catch (err) {}
+
+            if (this.activePointers.size === 0) {
+                this.isDragging = false;
+                this.viewport.classList.remove('is-dragging');
+                this.pinchStartDist = null;
+                setTimeout(() => {
+                    this.hasDragged = false;
+                }, 80);
+            } else if (this.activePointers.size === 1) {
+                const pt = this.activePointers.values().next().value;
+                this.isDragging = true;
+                this.dragStartX = pt.x;
+                this.dragStartY = pt.y;
+                this.initialPanX = this.panX;
+                this.initialPanY = this.panY;
+                this.pinchStartDist = null;
+            }
+        };
+
+        this.viewport.addEventListener('pointerup', handlePointerEnd);
+        this.viewport.addEventListener('pointercancel', handlePointerEnd);
+
+        // Double click background to toggle between 100% and 1.8x zoom
+        this.viewport.addEventListener('dblclick', (e) => {
+            if (e.target.closest('.pt-tile')) return;
+            if (this.scale > 1.1) {
+                this.resetZoom();
+            } else {
+                this.zoomAt(1.8, e.clientX, e.clientY, true);
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            this.clampPan();
+            this.applyTransform(false);
+        });
+
+        this.applyTransform(false);
+    }
+
+    zoomAt(targetScale, clientX, clientY, animate = true) {
+        if (!this.viewport) return;
+        const rect = this.viewport.getBoundingClientRect();
+        const cx = (clientX !== undefined) ? (clientX - rect.left) : (rect.width / 2);
+        const cy = (clientY !== undefined) ? (clientY - rect.top) : (rect.height / 2);
+
+        const canvasX = (cx - this.panX) / this.scale;
+        const canvasY = (cy - this.panY) / this.scale;
+
+        const clampedScale = Math.min(this.maxScale, Math.max(this.minScale, targetScale));
+        this.panX = cx - canvasX * clampedScale;
+        this.panY = cy - canvasY * clampedScale;
+        this.scale = clampedScale;
+
+        this.clampPan();
+        this.applyTransform(animate);
+    }
+
+    zoomIn() {
+        this.zoomAt(this.scale * 1.25, undefined, undefined, true);
+    }
+
+    zoomOut() {
+        this.zoomAt(this.scale / 1.25, undefined, undefined, true);
+    }
+
+    resetZoom() {
+        this.scale = 1.0;
+        this.panX = 0;
+        this.panY = 0;
+        this.applyTransform(true);
+    }
+
+    clampPan() {
+        if (!this.viewport || !this.gridContainer) return;
+        const vRect = this.viewport.getBoundingClientRect();
+        const cWidth = (this.gridContainer.scrollWidth || vRect.width) * this.scale;
+        const cHeight = (this.gridContainer.scrollHeight || vRect.height) * this.scale;
+
+        const maxMarginX = Math.max(60, vRect.width * 0.5);
+        const maxMarginY = Math.max(60, vRect.height * 0.5);
+
+        const minX = vRect.width - cWidth - maxMarginX;
+        const maxX = maxMarginX;
+        const minY = vRect.height - cHeight - maxMarginY;
+        const maxY = maxMarginY;
+
+        this.panX = Math.max(minX, Math.min(maxX, this.panX));
+        this.panY = Math.max(minY, Math.min(maxY, this.panY));
+    }
+
+    applyTransform(animate = false) {
+        if (!this.canvas) return;
+        this.canvas.style.transition = animate ? 'transform 0.22s cubic-bezier(0.2, 0, 0, 1)' : 'none';
+        this.canvas.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.scale})`;
+        if (this.zoomDisplay) {
+            this.zoomDisplay.textContent = `${Math.round(this.scale * 100)}%`;
+        }
+    }
+
+    centerOnElement(elem) {
+        if (!this.viewport || !this.canvas) return;
+        const targetTile = this.tileElements.find(item => item.elem.s === elem.s);
+        if (!targetTile || !targetTile.dom) return;
+
+        const vRect = this.viewport.getBoundingClientRect();
+        const tRect = targetTile.dom.getBoundingClientRect();
+        const currentScale = this.scale || 1.0;
+        const tileCenterX = (tRect.left + tRect.width / 2) - vRect.left - this.panX;
+        const tileCenterY = (tRect.top + tRect.height / 2) - vRect.top - this.panY;
+
+        const targetScale = Math.max(this.scale, 1.4);
+        const viewCenterX = vRect.width / 2;
+        const viewCenterY = vRect.height / 2;
+
+        this.scale = targetScale;
+        this.panX = viewCenterX - (tileCenterX / currentScale) * targetScale;
+        this.panY = viewCenterY - (tileCenterY / currentScale) * targetScale;
+        this.clampPan();
+        this.applyTransform(true);
     }
 }
 
