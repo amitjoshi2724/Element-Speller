@@ -7,7 +7,10 @@
     <link rel="stylesheet" href="https://pyscript.net/releases/2025.2.4/core.css">
     <script type="module" src="https://pyscript.net/releases/2025.2.4/core.js"></script>
     <!-- Favicon -->
-    <link rel="icon" href="../favicon.ico" type="image/x-icon">
+    <link rel="apple-touch-icon" sizes="180x180" href="../images/apple-touch-icon.png">
+    <link rel="icon" type="image/x-icon" href="../favicon.ico">
+    <link rel="icon" type="image/png" sizes="64x64" href="../images/icon-64.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="../images/icon-192.png">
     <style>
         body {
             font-family: 'Comic Sans MS', Arial, Helvetica, sans-serif;
@@ -194,8 +197,13 @@
                 <span>📅 Play Daily Element-Speller</span>
             </a>
         </div>
-        <div class="beaker">🧪</div>
-        <h1>Element Speller</h1>
+        <div style="display: flex; justify-content: center; margin-bottom: 15px;">
+            <picture>
+                <source srcset="../images/logo.webp" type="image/webp">
+                <img src="../images/logo.png" alt="Element Speller" style="max-width: 320px; width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(15, 30, 59, 0.2);">
+            </picture>
+        </div>
+        <h1 style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;">Element Speller</h1>
         <p>Enter a phrase and see it spelled with chemical elements!</p>
         
         <input type="text" id="phrase-input" placeholder="Enter a phrase..." autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="none">

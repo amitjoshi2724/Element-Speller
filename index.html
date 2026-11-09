@@ -12,10 +12,13 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Element-Speller">
-    <link rel="apple-touch-icon" href="images/icon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png">
 
     <!-- Favicon -->
-    <link rel="icon" href="favicon.ico" type="image/x-icon">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="icon" type="image/png" sizes="64x64" href="images/icon-64.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="images/icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="images/icon-512.png">
     <!-- Stylesheets -->
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/modals.css">
@@ -27,7 +30,8 @@
     <!-- Top Navigation Bar (Mastermindle Pattern) -->
     <nav class="mode-nav-bar" aria-label="Game navigation">
         <div class="mode-title">
-            <span id="mode-title-text">🧪 Element-Speller</span>
+            <img src="images/icon-64.png" alt="Element-Speller Logo" class="nav-brand-icon">
+            <span id="mode-title-text">Element-Speller</span>
         </div>
         <div class="nav-links-group">
             <a href="query/index.html" class="nav-action-btn" title="Spell any custom phrase with elements">
@@ -56,8 +60,13 @@
 
     <!-- Main Game Container -->
     <main class="container">
-        <div class="beaker">🧪</div>
-        <h1>Element-Speller</h1>
+        <div class="main-logo-container">
+            <picture>
+                <source srcset="images/logo.webp" type="image/webp">
+                <img src="images/logo.png" alt="Element-Speller — Daily Word Puzzle" class="main-logo-img">
+            </picture>
+            <h1 class="visually-hidden">Element-Speller</h1>
+        </div>
         <div class="puzzle-meta-badge" id="puzzle-meta-badge">Loading Daily Puzzle...</div>
         <p>Spell all 6 target words using chemical elements as fast as you can! <strong>Drag any element to the 🗑️
                 trash can to delete it.</strong></p>

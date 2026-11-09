@@ -520,7 +520,7 @@ class ElementSpellerGame {
             this.dailyWords = puzzleInfo.words;
             this.puzzleNumber = "Practice";
             this.dom.puzzleTitle.textContent = "🧪 Practice Mode • 6 Random Words";
-            this.dom.modeTitle.textContent = "🧪 Element-Speller (Practice)";
+            this.dom.modeTitle.textContent = "Element-Speller (Practice)";
         } else {
             this.currentDateStr = dateStr;
             puzzleInfo = getDailyWords(dateStr, 6);
@@ -531,7 +531,7 @@ class ElementSpellerGame {
             this.dom.puzzleTitle.textContent = isToday
                 ? `📅 Daily Puzzle #${this.puzzleNumber} • ${dateStr} • 6 Words`
                 : `📅 Past Puzzle #${this.puzzleNumber} • ${dateStr} • 6 Words`;
-            this.dom.modeTitle.textContent = `🧪 Element-Speller #${this.puzzleNumber}`;
+            this.dom.modeTitle.textContent = `Element-Speller #${this.puzzleNumber}`;
         }
 
         // Initialize word states for the 6 words
