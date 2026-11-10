@@ -829,14 +829,17 @@ class ElementSpellerGame {
                 this.renderElementSlots();
                 this.renderSolvedCardBreakdown();
 
+                const isMultiWord = this.dailyWords.length > 1;
                 this.dom.liveTimerDisplay.textContent = this.formatElapsed(this.solveTimeMs);
-                this.dom.statusMessage.textContent = `⭐🧪 Solved on this date in ${formatTimeMs(this.solveTimeMs)}! All 6 words complete.`;
+                this.dom.statusMessage.textContent = isMultiWord
+                    ? `⭐🧪 Solved on this date in ${formatTimeMs(this.solveTimeMs)}! All 6 words complete.`
+                    : `⭐🧪 Solved on this date in ${formatTimeMs(this.solveTimeMs)}! Word complete.`;
                 this.dom.statusMessage.className = "success";
 
                 if (this.dom.solvedCard) {
                     this.dom.solvedCard.style.display = "block";
                     if (this.dom.solvedTitle) {
-                        this.dom.solvedTitle.textContent = `🎉🧪 All 6 Words Solved!`;
+                        this.dom.solvedTitle.textContent = isMultiWord ? `🎉🧪 All 6 Words Solved!` : `🎉🧪 Word Solved!`;
                     }
                     this.dom.solvedTimeStat.textContent = `Best Time: ${formatTimeMs(this.solveTimeMs)}`;
                 }
