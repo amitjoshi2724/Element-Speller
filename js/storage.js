@@ -31,6 +31,7 @@ async function loadFirestore() {
 
 const STATS_KEY = "elementspeller_stats_v1";
 const HISTORY_KEY = "elementspeller_history_v1";
+const PRACTICE_HISTORY_KEY = "elementspeller_practice_history_v1";
 const ACTIVE_KEY = "elementspeller_active_state_v1";
 
 export const DEFAULT_STATS = {
@@ -41,6 +42,9 @@ export const DEFAULT_STATS = {
     bestTimeMs: null,
     totalTimeMs: 0,
     totalHintsUsed: 0,
+    meanSolveTimeMs: null,
+    practicePlayed: 0,
+    practiceWon: 0,
     lastPlayedDate: null,
     // Solve time distribution bins
     distribution: {
@@ -74,7 +78,8 @@ export function formatTimeMs(ms) {
 }
 
 let memoryHistory = loadLocalHistory();
-let memoryStats = sanitizeStats(loadLocalStats(), memoryHistory);
+let memoryPracticeHistory = loadLocalPracticeHistory();
+let memoryStats = sanitizeStats(loadLocalStats(), memoryHistory, memoryPracticeHistory);
 
 try {
     localStorage.setItem(STATS_KEY, JSON.stringify(memoryStats));
@@ -91,8 +96,26 @@ export function onStorageChange(callback) {
 function notifyListeners() {
     storageChangeListeners.forEach(cb => {
         try {
-            cb({ stats: memoryStats, history: memoryHistory });
+            cb({ stats: memoryStats, history: memoryHistory, practiceHistory: memoryPracticeHistory });
         } catch (e) {
+            console.error("Error in storage listener:", e);
+        }
+    });
+}
+
+export function loadLocalPracticeHistory() {
+    try {
+        let raw = localStorage.getItem(PRACTICE_HISTORY_KEY);
+        if (raw) return JSON.parse(raw);
+    } catch (e) {
+        console.error("Failed to parse local practice history:", e);
+    }
+    return [];
+}
+
+export function getPracticeHistory() {
+    return [...memoryPracticeHistory];
+}
             console.error("Error in storage listener:", e);
         }
     });
@@ -168,54 +191,79 @@ function computeStreaksFromHistory(history) {
     return { currentStreak, maxStreak };
 }
 
-function sanitizeStats(stats, history) {
+function sanitizeStats(stats, history, practiceHistory = memoryPracticeHistory) {
     const clean = { ...DEFAULT_STATS, ...(stats || {}) };
     clean.distribution = { ...DEFAULT_STATS.distribution, ...(clean.distribution || {}) };
 
-    const entries = Object.values(history || {});
-    if (entries.length > 0) {
-        let won = 0;
-        let totalTime = 0;
-        let totalHints = 0;
-        let bestTime = null;
-        const dist = {
-            "< 10s": 0,
-            "10-20s": 0,
-            "20-30s": 0,
-            "30-60s": 0,
-            "1-2m": 0,
-            "> 2m": 0
-        };
+    const dailyEntries = Object.values(history || {});
+    const practiceEntries = practiceHistory || [];
+    const allWonGames = [];
 
-        for (const r of entries) {
-            if (r.won) {
-                won++;
-                if (r.hintsUsed) totalHints += r.hintsUsed;
-                if (r.solveTimeMs && r.solveTimeMs > 0) {
-                    totalTime += r.solveTimeMs;
-                    bestTime = (bestTime === null) ? r.solveTimeMs : Math.min(bestTime, r.solveTimeMs);
-                    const bin = getTimeBin(r.solveTimeMs);
-                    dist[bin] = (dist[bin] || 0) + 1;
-                }
+    let won = 0;
+    let totalTime = 0;
+    let totalHints = 0;
+    let bestTime = null;
+    const dist = {
+        "< 10s": 0,
+        "10-20s": 0,
+        "20-30s": 0,
+        "30-60s": 0,
+        "1-2m": 0,
+        "> 2m": 0
+    };
+
+    // Process daily entries
+    for (const r of dailyEntries) {
+        if (r.won) {
+            won++;
+            allWonGames.push(r);
+            if (r.hintsUsed) totalHints += r.hintsUsed;
+            if (r.solveTimeMs && r.solveTimeMs > 0) {
+                totalTime += r.solveTimeMs;
+                bestTime = (bestTime === null) ? r.solveTimeMs : Math.min(bestTime, r.solveTimeMs);
+                const bin = getTimeBin(r.solveTimeMs);
+                dist[bin] = (dist[bin] || 0) + 1;
             }
         }
-
-        clean.played = Math.max(clean.played, entries.length);
-        clean.won = won;
-        clean.bestTimeMs = bestTime;
-        clean.totalTimeMs = totalTime;
-        clean.totalHintsUsed = totalHints;
-        clean.distribution = dist;
-
-        const { currentStreak, maxStreak } = computeStreaksFromHistory(history);
-        clean.currentStreak = currentStreak;
-        clean.maxStreak = Math.max(clean.maxStreak, maxStreak);
     }
+
+    // Process practice entries
+    let practiceWon = 0;
+    for (const pr of practiceEntries) {
+        if (pr.won) {
+            practiceWon++;
+            won++;
+            allWonGames.push(pr);
+            if (pr.hintsUsed) totalHints += pr.hintsUsed;
+            if (pr.solveTimeMs && pr.solveTimeMs > 0) {
+                totalTime += pr.solveTimeMs;
+                bestTime = (bestTime === null) ? pr.solveTimeMs : Math.min(bestTime, pr.solveTimeMs);
+                const bin = getTimeBin(pr.solveTimeMs);
+                dist[bin] = (dist[bin] || 0) + 1;
+            }
+        }
+    }
+
+    const totalGames = dailyEntries.length + practiceEntries.length;
+    clean.played = totalGames;
+    clean.won = won;
+    clean.bestTimeMs = bestTime;
+    clean.totalTimeMs = totalTime;
+    clean.totalHintsUsed = totalHints;
+    clean.meanSolveTimeMs = (won > 0 && totalTime > 0) ? Math.round(totalTime / won) : null;
+    clean.practicePlayed = practiceEntries.length;
+    clean.practiceWon = practiceWon;
+    clean.distribution = dist;
+
+    const { currentStreak, maxStreak } = computeStreaksFromHistory(history);
+    clean.currentStreak = currentStreak;
+    clean.maxStreak = Math.max(clean.maxStreak, maxStreak);
+
     return clean;
 }
 
 export function saveLocalStats(stats) {
-    memoryStats = sanitizeStats(stats, memoryHistory);
+    memoryStats = sanitizeStats(stats, memoryHistory, memoryPracticeHistory);
     try {
         localStorage.setItem(STATS_KEY, JSON.stringify(memoryStats));
     } catch (e) {
@@ -323,12 +371,75 @@ export function recordCompletion(dateStr, puzzleNum, wordOrWords, won, elementsU
         localStorage.setItem(HISTORY_KEY, JSON.stringify(memoryHistory));
     } catch (e) { }
 
-    const stats = sanitizeStats(memoryStats, memoryHistory);
+    const stats = sanitizeStats(memoryStats, memoryHistory, memoryPracticeHistory);
     stats.lastPlayedDate = dateStr;
     saveLocalStats(stats);
     clearActiveState(dateStr);
     clearDailyProgress(dateStr);
     return record;
+}
+
+/**
+ * Record a completed practice game so player can remember and review past practice games
+ */
+export function recordPracticeCompletion(words, won, elementsUsedOrWordRecords, solveTimeMs, hintsUsed = 0) {
+    const isArrayWords = Array.isArray(words);
+    const primaryWord = isArrayWords ? words[0] : words;
+    const finalWords = isArrayWords ? words : [words];
+    const practiceNum = memoryPracticeHistory.length + 1;
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+    const record = {
+        id: `practice_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        mode: "practice",
+        puzzleNum: `Practice #${practiceNum}`,
+        word: primaryWord,
+        words: finalWords,
+        won: !!won,
+        solveTimeMs: solveTimeMs || null,
+        hintsUsed: (hintsUsed !== undefined && hintsUsed !== null) ? hintsUsed : 0,
+        wordRecords: isArrayWords ? elementsUsedOrWordRecords : null,
+        elementsUsed: isArrayWords ? (elementsUsedOrWordRecords?.[0]?.placedElements || []) : elementsUsedOrWordRecords,
+        dateStr: dateStr,
+        timestamp: Date.now()
+    };
+
+    memoryPracticeHistory.unshift(record);
+    if (memoryPracticeHistory.length > 500) {
+        memoryPracticeHistory = memoryPracticeHistory.slice(0, 500);
+    }
+
+    try {
+        localStorage.setItem(PRACTICE_HISTORY_KEY, JSON.stringify(memoryPracticeHistory));
+    } catch (e) { }
+
+    const stats = sanitizeStats(memoryStats, memoryHistory, memoryPracticeHistory);
+    saveLocalStats(stats);
+    syncToCloud();
+    notifyListeners();
+    return record;
+}
+
+/**
+ * Get all completed game records (Daily + Practice) combined and sorted by timestamp descending
+ */
+export function getAllGameRecords() {
+    const dailyRecords = Object.entries(memoryHistory).map(([dateStr, rec]) => ({
+        ...rec,
+        id: `daily_${dateStr}`,
+        mode: "daily",
+        dateStr: dateStr,
+        puzzleNum: rec.puzzleNum || `#${getPuzzleNumber(dateStr)}`,
+        displayNum: `#${rec.puzzleNum || getPuzzleNumber(dateStr)}`,
+        timestamp: rec.timestamp || (new Date(dateStr + "T12:00:00Z").getTime())
+    }));
+    const practiceRecords = (memoryPracticeHistory || []).map(rec => ({
+        ...rec,
+        mode: "practice",
+        displayNum: rec.puzzleNum || "Practice"
+    }));
+    return [...dailyRecords, ...practiceRecords].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 }
 
 /**
@@ -342,7 +453,7 @@ export async function resetDailyGameResult(dateStr) {
 
     clearActiveState(dateStr);
     clearDailyProgress(dateStr);
-    memoryStats = sanitizeStats(memoryStats, memoryHistory);
+    memoryStats = sanitizeStats(memoryStats, memoryHistory, memoryPracticeHistory);
     try {
         localStorage.setItem(STATS_KEY, JSON.stringify(memoryStats));
     } catch (e) { }
@@ -384,7 +495,7 @@ export function clearActiveState(dateStr) {
 }
 
 export function getStats() {
-    return sanitizeStats(memoryStats, memoryHistory);
+    return sanitizeStats(memoryStats, memoryHistory, memoryPracticeHistory);
 }
 
 export function getHistory() {
@@ -406,12 +517,13 @@ async function syncToCloud() {
 
     try {
         const userRef = services.fns.doc(services.db, "users", user.uid);
-        const cleanStats = sanitizeStats(memoryStats, memoryHistory);
+        const cleanStats = sanitizeStats(memoryStats, memoryHistory, memoryPracticeHistory);
         await services.fns.setDoc(userRef, {
             element_speller_stats: cleanStats,
             element_speller_history: memoryHistory,
             elementspeller_stats: cleanStats,
             elementspeller_history: memoryHistory,
+            elementspeller_practice_history: memoryPracticeHistory,
             lastUpdated: Date.now()
         }, { merge: true });
     } catch (e) {
@@ -459,7 +571,7 @@ onAuthChange(async (user) => {
                 }
             }
 
-            // Merge history: union of completed puzzles
+            // Merge daily history: union of completed puzzles
             const mergedHistory = { ...memoryHistory };
             for (const [date, rec] of Object.entries(cloudHistory)) {
                 if (!mergedHistory[date]) {
@@ -471,8 +583,23 @@ onAuthChange(async (user) => {
                 }
             }
 
+            // Merge practice history from cloud
+            if (cloudData.elementspeller_practice_history && Array.isArray(cloudData.elementspeller_practice_history)) {
+                const existingIds = new Set(memoryPracticeHistory.map(p => p.id));
+                for (const pr of cloudData.elementspeller_practice_history) {
+                    if (!existingIds.has(pr.id)) {
+                        memoryPracticeHistory.push(pr);
+                        existingIds.add(pr.id);
+                    }
+                }
+                memoryPracticeHistory.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                try {
+                    localStorage.setItem(PRACTICE_HISTORY_KEY, JSON.stringify(memoryPracticeHistory));
+                } catch (e) { }
+            }
+
             memoryHistory = mergedHistory;
-            memoryStats = sanitizeStats(cloudStats, memoryHistory);
+            memoryStats = sanitizeStats(cloudStats, memoryHistory, memoryPracticeHistory);
 
             localStorage.setItem(STATS_KEY, JSON.stringify(memoryStats));
             localStorage.setItem(HISTORY_KEY, JSON.stringify(memoryHistory));
@@ -490,12 +617,26 @@ onAuthChange(async (user) => {
             if (docSnap.exists()) {
                 const updated = docSnap.data();
                 const incomingHist = updated.element_speller_history || updated.elementspeller_history || updated.elementle_history;
+                const incomingPractice = updated.elementspeller_practice_history;
                 const incomingStats = updated.element_speller_stats || updated.elementspeller_stats || updated.elementle_stats;
                 if (incomingHist) memoryHistory = { ...memoryHistory, ...incomingHist };
+                if (incomingPractice && Array.isArray(incomingPractice)) {
+                    const existingIds = new Set(memoryPracticeHistory.map(p => p.id));
+                    for (const pr of incomingPractice) {
+                        if (!existingIds.has(pr.id)) {
+                            memoryPracticeHistory.push(pr);
+                            existingIds.add(pr.id);
+                        }
+                    }
+                    memoryPracticeHistory.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                    try {
+                        localStorage.setItem(PRACTICE_HISTORY_KEY, JSON.stringify(memoryPracticeHistory));
+                    } catch (e) { }
+                }
                 if (incomingStats) {
-                    memoryStats = sanitizeStats({ ...DEFAULT_STATS, ...incomingStats }, memoryHistory);
+                    memoryStats = sanitizeStats({ ...DEFAULT_STATS, ...incomingStats }, memoryHistory, memoryPracticeHistory);
                 } else {
-                    memoryStats = sanitizeStats(memoryStats, memoryHistory);
+                    memoryStats = sanitizeStats(memoryStats, memoryHistory, memoryPracticeHistory);
                 }
                 localStorage.setItem(STATS_KEY, JSON.stringify(memoryStats));
                 localStorage.setItem(HISTORY_KEY, JSON.stringify(memoryHistory));

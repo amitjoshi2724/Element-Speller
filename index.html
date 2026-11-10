@@ -343,71 +343,139 @@
         </div>
     </div>
 
-    <!-- Statistics Modal (Wordle / Mastermindle Style with Solve Times) -->
+    <!-- Statistics Modal (Phylogenle-Style Dashboard & History) -->
     <div class="modal-overlay" id="stats-modal">
-        <div class="modal-card">
-            <div class="modal-header">
-                <h3 class="modal-title">📊 Element-Speller Statistics</h3>
+        <div class="modal-card stats-modal-dialog">
+            <div class="modal-header stats-modal-header">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <h3 class="modal-title">Your Statistics</h3>
+                    <span id="stats-account-sync-badge" class="stats-sync-badge">💾 Saved Locally</span>
+                </div>
                 <button class="modal-close-btn" aria-label="Close modal">&times;</button>
             </div>
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <div class="stat-val" id="stat-played">0</div>
-                    <div class="stat-lbl">PLAYED</div>
+            <div class="modal-body stats-modal-body">
+                <!-- Top Summary Cards (Row 1: 3 cards, Row 2: 2 cards) -->
+                <div class="stats-cards-top-row">
+                    <div class="stat-hero-card">
+                        <span id="stat-played" class="stat-hero-num">0</span>
+                        <span class="stat-hero-label">Games Played</span>
+                    </div>
+                    <div class="stat-hero-card">
+                        <span class="stat-hero-num"><span id="stat-streak">0</span> <span class="stat-hero-emoji">🌱</span></span>
+                        <span class="stat-hero-label">Current Streak</span>
+                    </div>
+                    <div class="stat-hero-card">
+                        <span class="stat-hero-num"><span class="stat-hero-emoji">⚡</span> <span id="stat-max-streak">0</span></span>
+                        <span class="stat-hero-label">Max Streak</span>
+                    </div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-val" id="stat-win-pct">0%</div>
-                    <div class="stat-lbl">WIN %</div>
+                <div class="stats-cards-second-row">
+                    <div class="stat-hero-card">
+                        <span id="stat-mean-time" class="stat-hero-num">--</span>
+                        <span class="stat-hero-label">Mean Solve Time</span>
+                    </div>
+                    <div class="stat-hero-card">
+                        <span id="stat-win-pct" class="stat-hero-num">0%</span>
+                        <span class="stat-hero-label">Win Rate</span>
+                    </div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-val" id="stat-streak">0</div>
-                    <div class="stat-lbl">CURRENT STREAK</div>
+
+                <!-- Controls Bar (Unfinished Toggle & Filter Tabs & Search & Total Count) -->
+                <div class="stats-history-toolbar">
+                    <div class="stats-toolbar-left">
+                        <label class="stats-toggle-control" for="stats-unfinished-toggle">
+                            <span class="stats-toggle-text">Unfinished</span>
+                            <input type="checkbox" id="stats-unfinished-toggle">
+                            <span class="stats-toggle-track"></span>
+                        </label>
+                        <div class="stats-mode-filter-pills">
+                            <button type="button" class="stats-mode-pill active" data-mode="all">All</button>
+                            <button type="button" class="stats-mode-pill" data-mode="daily">Daily</button>
+                            <button type="button" class="stats-mode-pill" data-mode="practice">Practice</button>
+                        </div>
+                        <input type="text" id="stats-history-search" class="stats-history-search-input" placeholder="Filter by word, #puzzle, or date...">
+                    </div>
+                    <div class="stats-toolbar-right">
+                        <span class="stats-total-label">Total: <strong id="stats-total-count">0</strong></span>
+                    </div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-val" id="stat-max-streak">0</div>
-                    <div class="stat-lbl">MAX STREAK</div>
+
+                <!-- 52-Week Activity Heatmap -->
+                <div class="stats-heatmap-section">
+                    <div class="stats-heatmap-scroll">
+                        <div id="stats-heatmap-months" class="stats-heatmap-months"></div>
+                        <div id="stats-heatmap-grid" class="stats-heatmap-grid"></div>
+                    </div>
+                    <div class="stats-heatmap-legend">
+                        <span class="heatmap-legend-item"><span class="heatmap-swatch swatch-solved"></span> Solved (no hints)</span>
+                        <span class="heatmap-legend-item"><span class="heatmap-swatch swatch-hint"></span> Used hint</span>
+                        <span class="heatmap-legend-item"><span class="heatmap-swatch swatch-snipe"></span> 🎯 Snipe (&lt;1m)</span>
+                        <span class="heatmap-legend-item"><span class="heatmap-swatch swatch-gaveup"></span> Gave up</span>
+                        <span id="heatmap-legend-unfinished" class="heatmap-legend-item hidden"><span class="heatmap-swatch swatch-unfinished"></span> Unfinished</span>
+                    </div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-val" id="stat-best-time">--</div>
-                    <div class="stat-lbl">BEST TIME</div>
+
+                <!-- Expandable Game Replay / Detail Breakdown Drawer -->
+                <div id="stats-game-detail-drawer" class="stats-game-detail-drawer hidden"></div>
+
+                <!-- Past Games Table -->
+                <div class="stats-history-table-wrapper">
+                    <table class="stats-history-table">
+                        <thead>
+                            <tr>
+                                <th class="col-word">Word(s)</th>
+                                <th class="col-hints">Hints</th>
+                                <th class="col-time">Time</th>
+                                <th class="col-mode">Daily / Practice #</th>
+                                <th class="col-date">Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stats-history-tbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-val" id="stat-avg-time">--</div>
-                    <div class="stat-lbl">AVG TIME</div>
+
+                <!-- Current / Selected Puzzle Status in Stats -->
+                <div class="stats-puzzle-summary" id="stats-puzzle-summary">
+                    <div class="stats-puzzle-summary-header">
+                        <span class="stats-puzzle-summary-title" id="stats-puzzle-summary-title">Active Puzzle</span>
+                        <span class="stats-puzzle-summary-time" id="stats-puzzle-summary-time">⏱️ --</span>
+                    </div>
+                    <div class="stats-puzzle-summary-status" id="stats-puzzle-summary-status">Loading status...</div>
+                </div>
+
+                <!-- Collapsible Time Distribution -->
+                <details class="stats-distribution-details">
+                    <summary class="stats-distribution-summary">📈 View Time Distribution &amp; Share</summary>
+                    <div class="distribution-section" style="margin-top: 0.75rem;">
+                        <div id="score-distribution-bars" class="dist-bars">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+                </details>
+
+                <div class="modal-footer-box">
+                    <div class="countdown-box">
+                        <span class="countdown-lbl">Next Daily Puzzle In</span>
+                        <span class="countdown-val" id="next-countdown-val">--:--:--</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
+                        <button class="share-btn" id="stats-share-no-spoiler-btn"
+                            title="Share result with emoji blocks (no spoilers)">
+                            <span>📋 Share (No Spoilers)</span>
+                        </button>
+                        <button class="share-btn secondary" id="stats-share-spoiler-btn"
+                            title="Share full solution with element words">
+                            <span>👁️ Share (With Spoilers)</span>
+                        </button>
+                        <button id="stats-retry-btn" class="quick-action-btn reset"
+                            style="padding: 10px 14px; font-size: 14px;">
+                            <span>🔄 Retry / Reset</span>
+                        </button>
+                    </div>
                 </div>
             </div>
-
-            <!-- Current / Today's Puzzle Status in Stats -->
-            <div class="stats-puzzle-summary" id="stats-puzzle-summary">
-                <div class="stats-puzzle-summary-header">
-                    <span class="stats-puzzle-summary-title" id="stats-puzzle-summary-title">Daily Puzzle</span>
-                    <span class="stats-puzzle-summary-time" id="stats-puzzle-summary-time">⏱️ --</span>
-                </div>
-                <div class="stats-puzzle-summary-status" id="stats-puzzle-summary-status">Loading status...</div>
-            </div>
-
-            <div class="modal-footer-box">
-                <div class="countdown-box">
-                    <span class="countdown-lbl">Next Daily Puzzle In</span>
-                    <span class="countdown-val" id="next-countdown-val">--:--:--</span>
-                </div>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
-                    <button class="share-btn" id="stats-share-no-spoiler-btn"
-                        title="Share result with emoji blocks (no spoilers)">
-                        <span>📋 Share (No Spoilers)</span>
-                    </button>
-                    <button class="share-btn secondary" id="stats-share-spoiler-btn"
-                        title="Share full solution with element words">
-                        <span>👁️ Share (With Spoilers)</span>
-                    </button>
-                    <button id="stats-retry-btn" class="quick-action-btn reset"
-                        style="padding: 10px 14px; font-size: 14px;">
-                        <span>🔄 Retry / Reset</span>
-                    </button>
-                </div>
-            </div>
-
-
         </div>
     </div>
 

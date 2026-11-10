@@ -5,6 +5,9 @@ import {
     getHistory,
     getRecordForDate,
     recordCompletion,
+    recordPracticeCompletion,
+    getPracticeHistory,
+    getAllGameRecords,
     saveDailyProgress,
     loadDailyProgress,
     clearDailyProgress,
@@ -14,7 +17,7 @@ import {
     getTimeBin
 } from "./storage.js";
 import { PeriodicTable } from "./periodic-table.js";
-import { setupAuthUI } from "./auth.js";
+import { setupAuthUI, getCurrentUser } from "./auth.js";
 import { isSpellable, getValidNextElements } from "./speller.js";
 
 class ElementSpellerGame {
@@ -45,6 +48,12 @@ class ElementSpellerGame {
         const todayDate = parseDate(this.todayStr);
         this.calYear = todayDate.getFullYear();
         this.calMonth = todayDate.getMonth();
+
+        // Phylogenle-Style Statistics State
+        this.statsFilterMode = "all";
+        this.statsShowUnfinished = false;
+        this.statsSearchQuery = "";
+        this.selectedGameId = null;
 
         this.initDOM();
         this.initDatalist();
@@ -170,13 +179,22 @@ class ElementSpellerGame {
             ptToggleIcon: document.getElementById("pt-toggle-icon"),
             ptToggleLabel: document.getElementById("pt-toggle-label"),
 
-            // Stats elements
+            // Stats elements (Phylogenle-Style Dashboard & History)
             statPlayed: document.getElementById("stat-played"),
             statWinPct: document.getElementById("stat-win-pct"),
             statStreak: document.getElementById("stat-streak"),
             statMaxStreak: document.getElementById("stat-max-streak"),
+            statMeanTime: document.getElementById("stat-mean-time"),
             statBestTime: document.getElementById("stat-best-time"),
             statAvgTime: document.getElementById("stat-avg-time"),
+            statsSyncBadge: document.getElementById("stats-account-sync-badge"),
+            statsUnfinishedToggle: document.getElementById("stats-unfinished-toggle"),
+            statsHistorySearch: document.getElementById("stats-history-search"),
+            statsTotalCount: document.getElementById("stats-total-count"),
+            statsHeatmapMonths: document.getElementById("stats-heatmap-months"),
+            statsHeatmapGrid: document.getElementById("stats-heatmap-grid"),
+            statsGameDetailDrawer: document.getElementById("stats-game-detail-drawer"),
+            statsHistoryTbody: document.getElementById("stats-history-tbody"),
             statsPuzzleTitle: document.getElementById("stats-puzzle-summary-title"),
             statsPuzzleTime: document.getElementById("stats-puzzle-summary-time"),
             statsPuzzleStatus: document.getElementById("stats-puzzle-summary-status"),
@@ -402,6 +420,28 @@ class ElementSpellerGame {
                 this.openModal(this.dom.statsModal);
             });
         }
+
+        // Statistics Modal Controls (Toolbar filters, search, toggle)
+        if (this.dom.statsUnfinishedToggle) {
+            this.dom.statsUnfinishedToggle.addEventListener("change", (e) => {
+                this.statsShowUnfinished = e.target.checked;
+                this.renderStatsHistoryTable();
+            });
+        }
+        if (this.dom.statsHistorySearch) {
+            this.dom.statsHistorySearch.addEventListener("input", (e) => {
+                this.statsSearchQuery = e.target.value.trim().toLowerCase();
+                this.renderStatsHistoryTable();
+            });
+        }
+        document.querySelectorAll(".stats-mode-pill").forEach(pill => {
+            pill.addEventListener("click", () => {
+                document.querySelectorAll(".stats-mode-pill").forEach(p => p.classList.remove("active"));
+                pill.classList.add("active");
+                this.statsFilterMode = pill.dataset.mode || "all";
+                this.renderStatsHistoryTable();
+            });
+        });
 
         const openArchiveBtn = document.getElementById("open-archive-btn");
         if (openArchiveBtn) {
@@ -1537,26 +1577,36 @@ class ElementSpellerGame {
         this.solveTimeMs = Math.max(100, Date.now() - this.startTime);
 
         const totalWords = this.dailyWords.length;
+        const wordRecords = this.wordStates.map(ws => ({
+            word: ws.word,
+            placedElements: (ws.placedElements || []).map(e => ({
+                symbol: e.symbol,
+                name: e.name,
+                number: e.number
+            })),
+            isSolved: ws.isSolved,
+            solveTimeMs: ws.solveTimeMs
+        }));
+
         if (!this.isPractice) {
             recordCompletion(
                 this.currentDateStr,
                 this.puzzleNumber,
                 this.dailyWords,
                 true,
-                this.wordStates.map(ws => ({
-                    word: ws.word,
-                    placedElements: (ws.placedElements || []).map(e => ({
-                        symbol: e.symbol,
-                        name: e.name,
-                        number: e.number
-                    })),
-                    isSolved: ws.isSolved,
-                    solveTimeMs: ws.solveTimeMs
-                })),
+                wordRecords,
                 this.solveTimeMs,
                 this.hintsUsed || 0
             );
             clearDailyProgress(this.currentDateStr);
+        } else {
+            recordPracticeCompletion(
+                this.dailyWords,
+                true,
+                wordRecords,
+                this.solveTimeMs,
+                this.hintsUsed || 0
+            );
         }
 
         const formatted = formatTimeMs(this.solveTimeMs);
@@ -1784,15 +1834,41 @@ class ElementSpellerGame {
 
     renderStatsModal() {
         const stats = getStats();
+        const user = getCurrentUser();
+
+        // Update cloud sync status pill
+        if (this.dom.statsSyncBadge) {
+            if (user && user.email) {
+                this.dom.statsSyncBadge.className = "stats-sync-badge synced";
+                this.dom.statsSyncBadge.textContent = `☁️ Synced (${user.email})`;
+            } else {
+                this.dom.statsSyncBadge.className = "stats-sync-badge local";
+                this.dom.statsSyncBadge.textContent = "💾 Saved Locally";
+            }
+        }
+
+        // Hero Cards
         if (this.dom.statPlayed) this.dom.statPlayed.textContent = stats.played;
         if (this.dom.statWinPct) this.dom.statWinPct.textContent = stats.played > 0 ? `${Math.round((stats.won / stats.played) * 100)}%` : "0%";
         if (this.dom.statStreak) this.dom.statStreak.textContent = stats.currentStreak;
         if (this.dom.statMaxStreak) this.dom.statMaxStreak.textContent = stats.maxStreak || stats.currentStreak || 0;
+        if (this.dom.statMeanTime) {
+            this.dom.statMeanTime.textContent = stats.meanSolveTimeMs ? formatTimeMs(stats.meanSolveTimeMs) : "--";
+        }
         if (this.dom.statBestTime) this.dom.statBestTime.textContent = formatTimeMs(stats.bestTimeMs);
         if (this.dom.statAvgTime) {
             const avgMs = (stats.won > 0 && stats.totalTimeMs) ? Math.round(stats.totalTimeMs / stats.won) : null;
             this.dom.statAvgTime.textContent = formatTimeMs(avgMs);
         }
+
+        // Render 52-week activity heatmap
+        this.renderStatsHeatmap();
+
+        // Render past games history table
+        this.renderStatsHistoryTable();
+
+        // Render distribution bars
+        this.renderStatsDistribution(stats);
 
         // Current / Selected Puzzle Status in Stats Modal
         if (this.dom.statsPuzzleTitle) {
@@ -1834,6 +1910,362 @@ class ElementSpellerGame {
                 this.dom.statsPuzzleStatus.textContent = "Click 'Start Game' to reveal words and begin playing!";
             }
         }
+    }
+
+    renderStatsHeatmap() {
+        const grid = this.dom.statsHeatmapGrid;
+        const monthsContainer = this.dom.statsHeatmapMonths;
+        if (!grid) return;
+
+        const allGames = getAllGameRecords();
+        const gamesByDate = {};
+        for (const g of allGames) {
+            const d = g.dateStr;
+            if (!d) continue;
+            if (!gamesByDate[d]) gamesByDate[d] = [];
+            gamesByDate[d].push(g);
+        }
+
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+        // End on current week Saturday
+        const dayOfWeek = today.getDay();
+        const daysToSaturday = 6 - dayOfWeek;
+        const endDate = new Date(today);
+        endDate.setDate(today.getDate() + daysToSaturday);
+
+        // 52 weeks = 364 days total
+        const startDate = new Date(endDate);
+        startDate.setDate(endDate.getDate() - (52 * 7 - 1));
+
+        // Months row labels
+        if (monthsContainer) {
+            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const monthSpans = [];
+            let checkDate = new Date(startDate);
+            let lastMonth = -1;
+
+            for (let w = 0; w < 52; w++) {
+                const m = checkDate.getMonth();
+                if (m !== lastMonth) {
+                    monthSpans.push(`<span>${monthNames[m]}</span>`);
+                    lastMonth = m;
+                }
+                checkDate.setDate(checkDate.getDate() + 7);
+            }
+            monthsContainer.innerHTML = monthSpans.join("");
+        }
+
+        const cellHtml = [];
+        let curr = new Date(startDate);
+        while (curr <= endDate) {
+            const dStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, "0")}-${String(curr.getDate()).padStart(2, "0")}`;
+            const isFuture = dStr > todayStr;
+            const games = gamesByDate[dStr] || [];
+
+            let swatchClass = "";
+            let title = `${dStr}: No games played`;
+
+            if (!isFuture && games.length > 0) {
+                const wonGames = games.filter(g => g.won);
+                if (wonGames.length > 0) {
+                    const hasSnipe = wonGames.some(g => g.solveTimeMs && g.solveTimeMs < 60000);
+                    const allZeroHints = wonGames.every(g => !g.hintsUsed || g.hintsUsed === 0);
+
+                    if (hasSnipe) {
+                        swatchClass = "swatch-snipe";
+                    } else if (allZeroHints) {
+                        swatchClass = "swatch-solved";
+                    } else {
+                        swatchClass = "swatch-hint";
+                    }
+                    const bestTime = Math.min(...wonGames.map(g => g.solveTimeMs || 999999));
+                    title = `${dStr}: ${games.length} game(s) played (Best: ${formatTimeMs(bestTime)})`;
+                } else {
+                    swatchClass = "swatch-gaveup";
+                    title = `${dStr}: Unfinished game`;
+                }
+            }
+
+            cellHtml.push(`
+                <div class="heatmap-cell ${swatchClass}" data-date="${dStr}" title="${title}"></div>
+            `);
+
+            curr.setDate(curr.getDate() + 1);
+        }
+
+        grid.innerHTML = cellHtml.join("");
+
+        // Clicking a cell filters the table to that date
+        grid.querySelectorAll(".heatmap-cell").forEach(cell => {
+            cell.addEventListener("click", () => {
+                const d = cell.dataset.date;
+                if (!d) return;
+                this.statsSearchQuery = d;
+                if (this.dom.statsHistorySearch) {
+                    this.dom.statsHistorySearch.value = d;
+                }
+                this.renderStatsHistoryTable();
+            });
+        });
+    }
+
+    renderStatsHistoryTable() {
+        const tbody = this.dom.statsHistoryTbody;
+        if (!tbody) return;
+
+        const allGames = getAllGameRecords();
+        const mode = this.statsFilterMode || "all";
+        const showUnfinished = !!this.statsShowUnfinished;
+        const query = (this.statsSearchQuery || "").trim().toLowerCase();
+
+        const filtered = allGames.filter(g => {
+            // Mode filter
+            if (mode === "daily" && g.mode !== "daily") return false;
+            if (mode === "practice" && g.mode !== "practice") return false;
+
+            // Unfinished toggle
+            if (showUnfinished && g.won) return false;
+            if (!showUnfinished && !g.won) return false;
+
+            // Search query filter
+            if (query) {
+                const targetStr = (g.words ? g.words.join(" ") : (g.word || "")).toLowerCase();
+                const numStr = String(g.displayNum || g.puzzleNum || "").toLowerCase();
+                const dateStr = String(g.dateStr || "").toLowerCase();
+                if (!targetStr.includes(query) && !numStr.includes(query) && !dateStr.includes(query)) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        if (this.dom.statsTotalCount) {
+            this.dom.statsTotalCount.textContent = filtered.length;
+        }
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align: center; color: #94a3b8; padding: 24px 12px;">
+                        No ${showUnfinished ? 'unfinished ' : ''}${mode === 'all' ? '' : mode + ' '}games found.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = filtered.map(g => {
+            let statusDot = "solved";
+            if (!g.won) {
+                statusDot = "gaveup";
+            } else if (g.solveTimeMs && g.solveTimeMs < 60000) {
+                statusDot = "snipe";
+            } else if (g.hintsUsed > 0) {
+                statusDot = "hint";
+            }
+
+            const wordList = g.words || [g.word];
+            const primaryWord = wordList[0] || g.word || "Puzzle";
+            const wordCountTag = wordList.length > 1
+                ? `<span class="stats-word-pill-tag">${wordList.length} words</span>`
+                : `<span class="stats-word-pill-tag">1 word</span>`;
+
+            const isSelected = (this.selectedGameId === g.id);
+
+            return `
+                <tr class="${isSelected ? 'is-selected' : ''}" data-game-id="${g.id}">
+                    <td class="col-word">
+                        <span class="game-status-dot ${statusDot}"></span>
+                        <strong>${primaryWord}</strong> ${wordCountTag}
+                    </td>
+                    <td class="col-hints">${g.hintsUsed > 0 ? g.hintsUsed : '—'}</td>
+                    <td class="col-time">${g.won ? formatTimeMs(g.solveTimeMs) : 'Unfinished'}</td>
+                    <td class="col-mode">${g.displayNum || g.puzzleNum}</td>
+                    <td class="col-date">${g.dateStr}</td>
+                </tr>
+            `;
+        }).join("");
+
+        // Row click opens detail breakdown drawer
+        tbody.querySelectorAll("tr[data-game-id]").forEach(tr => {
+            tr.addEventListener("click", () => {
+                const id = tr.dataset.gameId;
+                const game = filtered.find(g => g.id === id);
+                if (game) {
+                    this.selectedGameId = (this.selectedGameId === id) ? null : id;
+                    tbody.querySelectorAll("tr").forEach(r => r.classList.remove("is-selected"));
+                    if (this.selectedGameId) {
+                        tr.classList.add("is-selected");
+                        this.openGameDetailDrawer(game);
+                    } else {
+                        this.closeGameDetailDrawer();
+                    }
+                }
+            });
+        });
+    }
+
+    openGameDetailDrawer(game) {
+        const drawer = this.dom.statsGameDetailDrawer;
+        if (!drawer) return;
+
+        const words = game.words || [game.word];
+        const records = game.wordRecords || [];
+
+        const wordRowsHtml = words.map((w, idx) => {
+            const rec = records[idx];
+            const elems = rec?.placedElements || (idx === 0 ? game.elementsUsed : []) || [];
+            const chipsHtml = elems.length > 0
+                ? elems.map(e => `<span class="drawer-chip"><span class="drawer-chip-num">${e.number || ''}</span>${e.symbol}</span>`).join("")
+                : '<span style="color: #94a3b8; font-size: 0.75rem; font-style: italic;">Solved</span>';
+
+            return `
+                <div class="drawer-word-row">
+                    <span class="drawer-word-name">${idx + 1}. ${w}</span>
+                    <div class="drawer-chips">${chipsHtml}</div>
+                </div>
+            `;
+        }).join("");
+
+        const isPractice = game.mode === "practice";
+        const modeBadge = isPractice
+            ? `🧪 ${game.displayNum || game.puzzleNum || 'Practice'}`
+            : `📅 Daily ${game.displayNum || game.puzzleNum}`;
+
+        drawer.innerHTML = `
+            <div class="drawer-header">
+                <span class="drawer-title">${modeBadge} • ${game.dateStr}</span>
+                <span class="drawer-stats">⏱️ ${game.won ? formatTimeMs(game.solveTimeMs) : 'Unfinished'} • 💡 ${game.hintsUsed || 0} hints</span>
+            </div>
+            <div class="drawer-words-list">
+                ${wordRowsHtml}
+            </div>
+            <div class="drawer-actions">
+                <button type="button" class="drawer-btn primary" id="drawer-review-btn">
+                    🎮 Review & Replay on Board
+                </button>
+                <button type="button" class="drawer-btn secondary" id="drawer-close-btn">
+                    ✕ Close
+                </button>
+            </div>
+        `;
+
+        drawer.classList.remove("hidden");
+
+        const reviewBtn = drawer.querySelector("#drawer-review-btn");
+        if (reviewBtn) {
+            reviewBtn.addEventListener("click", () => {
+                this.reviewGameRecord(game);
+            });
+        }
+
+        const closeBtn = drawer.querySelector("#drawer-close-btn");
+        if (closeBtn) {
+            closeBtn.addEventListener("click", () => {
+                this.closeGameDetailDrawer();
+            });
+        }
+
+        drawer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    closeGameDetailDrawer() {
+        const drawer = this.dom.statsGameDetailDrawer;
+        if (drawer) {
+            drawer.classList.add("hidden");
+            drawer.innerHTML = "";
+        }
+        this.selectedGameId = null;
+        if (this.dom.statsHistoryTbody) {
+            this.dom.statsHistoryTbody.querySelectorAll("tr").forEach(r => r.classList.remove("is-selected"));
+        }
+    }
+
+    reviewGameRecord(game) {
+        this.closeModal(this.dom.statsModal);
+        this.closeGameDetailDrawer();
+
+        if (game.mode === "practice") {
+            this.isPractice = true;
+            this.currentDateStr = null;
+            this.dailyWords = game.words || [game.word];
+            this.puzzleNumber = game.puzzleNum || "Practice";
+            this.solveTimeMs = game.solveTimeMs || 0;
+            this.hintsUsed = game.hintsUsed || 0;
+            this.isGameOver = true;
+            this.isWordRevealed = true;
+            this.isPaused = false;
+            this.currentWordIdx = 0;
+            this.stopSolveTimer();
+
+            this.wordStates = (game.wordRecords && game.wordRecords.length > 0)
+                ? game.wordRecords.map(rec => ({
+                    word: rec.word,
+                    placedElements: (rec.placedElements || []).map(e => {
+                        const canonical = symbolToData[e.symbol?.toLowerCase()];
+                        return canonical ? { ...canonical } : { symbol: e.symbol, name: e.name || e.symbol, number: e.number || "" };
+                    }),
+                    isSolved: true,
+                    solveTimeMs: rec.solveTimeMs || null
+                }))
+                : this.dailyWords.map(w => ({
+                    word: w,
+                    placedElements: (game.elementsUsed || []).map(e => {
+                        const canonical = symbolToData[e.symbol?.toLowerCase()];
+                        return canonical ? { ...canonical } : { symbol: e.symbol, name: e.name || e.symbol, number: e.number || "" };
+                    }),
+                    isSolved: true,
+                    solveTimeMs: null
+                }));
+
+            this.updateModeUI(true);
+            this.renderWordPicker();
+            this.renderTargetWord();
+            this.renderElementSlots();
+            this.renderSolvedCardBreakdown();
+
+            this.dom.puzzleTitle.textContent = `🧪 ${game.displayNum || game.puzzleNum || 'Practice Game'} • Solved Review`;
+            this.dom.liveTimerDisplay.textContent = this.formatElapsed(this.solveTimeMs);
+            this.dom.statusMessage.textContent = `⭐🧪 Reviewing practice game! Solved in ${formatTimeMs(this.solveTimeMs)} with ${this.hintsUsed} hint(s).`;
+            this.dom.statusMessage.className = "success";
+
+            if (this.dom.solvedCard) {
+                this.dom.solvedCard.style.display = "block";
+                if (this.dom.solvedTitle) {
+                    this.dom.solvedTitle.textContent = "🎉🧪 Practice Solved!";
+                }
+                this.dom.solvedTimeStat.textContent = `Solved in ${formatTimeMs(this.solveTimeMs)}`;
+            }
+            if (this.dom.inputGroupArea) this.dom.inputGroupArea.style.display = "none";
+        } else {
+            // Daily puzzle: load date
+            this.startPuzzle(game.dateStr, false);
+        }
+    }
+
+    renderStatsDistribution(stats) {
+        const container = document.getElementById("score-distribution-bars");
+        if (!container) return;
+
+        const dist = stats.distribution || {};
+        const maxVal = Math.max(1, ...Object.values(dist));
+
+        container.innerHTML = Object.entries(dist).map(([bin, count]) => {
+            const pct = Math.max(7, Math.round((count / maxVal) * 100));
+            return `
+                <div class="dist-row">
+                    <span class="dist-label">${bin}</span>
+                    <div class="dist-bar-wrapper">
+                        <div class="dist-bar ${count > 0 ? 'has-data' : ''}" style="width: ${pct}%;">
+                            <span class="dist-count">${count}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join("");
     }
 
     copyShareCard(withSpoiler = false, targetBtn = null) {
