@@ -116,10 +116,6 @@ export function loadLocalPracticeHistory() {
 export function getPracticeHistory() {
     return [...memoryPracticeHistory];
 }
-            console.error("Error in storage listener:", e);
-        }
-    });
-}
 
 export function loadLocalStats() {
     try {
