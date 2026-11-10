@@ -354,7 +354,7 @@ export function sanitizeForFirestore(val) {
     return JSON.parse(JSON.stringify(val, (key, value) => (value === undefined ? null : value)));
 }
 
-export function recordCompletion(dateStr, puzzleNum, wordOrWords, won, elementsUsedOrWordRecords, solveTimeMs, hintsUsed = 0) {
+export async function recordCompletion(dateStr, puzzleNum, wordOrWords, won, elementsUsedOrWordRecords, solveTimeMs, hintsUsed = 0) {
     const existing = memoryHistory[dateStr];
     const isArrayWords = Array.isArray(wordOrWords);
     const incomingCount = isArrayWords ? wordOrWords.length : 1;
@@ -394,6 +394,7 @@ export function recordCompletion(dateStr, puzzleNum, wordOrWords, won, elementsU
     saveLocalStats(stats);
     clearActiveState(dateStr);
     clearDailyProgress(dateStr);
+    await syncToCloud();
     return record;
 }
 
@@ -535,10 +536,12 @@ export async function syncToCloud() {
     const user = getCurrentUser();
     if (!user) {
         pendingCloudSync = true;
-        return false;
+        return { success: false, reason: "not_signed_in" };
     }
     const services = await loadFirestore();
-    if (!services || !services.db || !services.fns) return false;
+    if (!services || !services.db || !services.fns) {
+        return { success: false, reason: "firestore_unavailable" };
+    }
 
     try {
         const userRef = services.fns.doc(services.db, "users", user.uid);
@@ -553,10 +556,10 @@ export async function syncToCloud() {
         });
         await services.fns.setDoc(userRef, payload, { merge: true });
         pendingCloudSync = false;
-        return true;
+        return { success: true };
     } catch (e) {
-        console.warn("Could not sync ElementSpeller data to Firestore:", e);
-        return false;
+        console.error("Could not sync ElementSpeller data to Firestore:", e);
+        return { success: false, error: e.message || String(e) };
     }
 }
 
@@ -564,9 +567,11 @@ export async function syncToCloud() {
  * Actively fetch and merge the latest records from Firestore
  */
 export async function refreshFromCloud(user = getCurrentUser()) {
-    if (!user) return false;
+    if (!user) return { success: false, reason: "not_signed_in" };
     const services = await loadFirestore();
-    if (!services || !services.db || !services.fns) return false;
+    if (!services || !services.db || !services.fns) {
+        return { success: false, reason: "firestore_unavailable" };
+    }
 
     try {
         const userRef = services.fns.doc(services.db, "users", user.uid);
@@ -650,17 +655,17 @@ export async function refreshFromCloud(user = getCurrentUser()) {
             localStorage.setItem(HISTORY_KEY, JSON.stringify(memoryHistory));
             notifyListeners();
 
-            // Push clean merged data back to cloud
+            // Push clean merged data back to cloud to heal any gaps
             await syncToCloud();
-            return true;
+            return { success: true, count: Object.keys(mergedHistory).length };
         } else {
             // First time login for this user: seed cloud with current local stats
             await syncToCloud();
-            return true;
+            return { success: true, count: Object.keys(memoryHistory).length };
         }
     } catch (e) {
-        console.warn("Could not refresh from Firestore:", e);
-        return false;
+        console.error("Could not refresh from Firestore:", e);
+        return { success: false, error: e.message || String(e) };
     }
 }
 
@@ -685,7 +690,7 @@ onAuthChange(async (user) => {
 
     try {
         const userRef = services.fns.doc(services.db, "users", user.uid);
-        // Setup real-time listener for multi-tab or cross-device updates
+        // Setup real-time listener with error handler
         firestoreUnsubscribe = services.fns.onSnapshot(userRef, (docSnap) => {
             if (docSnap.exists()) {
                 const updated = docSnap.data() || {};
@@ -734,6 +739,8 @@ onAuthChange(async (user) => {
                 localStorage.setItem(HISTORY_KEY, JSON.stringify(memoryHistory));
                 notifyListeners();
             }
+        }, (err) => {
+            console.warn("Real-time Firestore listener warning:", err);
         });
     } catch (e) {
         console.warn("Error setting up Firestore storage sync:", e);

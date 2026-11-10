@@ -1,9 +1,9 @@
 /**
- * Element-Speller Service Worker (v1.1.9)
+ * Element-Speller Service Worker (v1.2.0)
  * Full offline PWA support for macOS Dock, iOS Safari, Android, and Desktop Chrome.
  */
 
-const CACHE_NAME = 'element-speller-v1.1.9';
+const CACHE_NAME = 'element-speller-v1.2.0';
 
 const CORE_ASSETS = [
   './',
@@ -59,6 +59,13 @@ self.addEventListener('activate', (event) => {
       return self.clients.claim();
     })
   );
+});
+
+// Message Event: Allow web clients to trigger skipWaiting on demand
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // Fetch Event

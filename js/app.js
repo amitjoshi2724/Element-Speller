@@ -19,7 +19,7 @@ import {
     syncToCloud
 } from "./storage.js";
 import { PeriodicTable } from "./periodic-table.js";
-import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange } from "./auth.js";
+import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js";
 import { isSpellable, getValidNextElements } from "./speller.js";
 
 class ElementSpellerGame {
@@ -114,10 +114,20 @@ class ElementSpellerGame {
             }
         });
 
-        onAuthChange(() => {
+        onAuthChange((user) => {
             this.renderArchiveSyncBadge();
             if (this.dom.statsModal && this.dom.statsModal.classList.contains("active")) {
                 this.renderStatsModal();
+            }
+            if (this.dom.archiveModal && this.dom.archiveModal.classList.contains("active")) {
+                this.renderCalendarView();
+                this.renderArchiveList();
+            }
+            if (this.currentDateStr && !this.isGameOver) {
+                const updatedRec = getRecordForDate(this.currentDateStr);
+                if (updatedRec && updatedRec.won) {
+                    this.startPuzzle(this.currentDateStr, false);
+                }
             }
         });
     }
@@ -463,20 +473,34 @@ class ElementSpellerGame {
 
         // Interactive Sync Badges: click to refresh from cloud or trigger sign-in
         const handleSyncBadgeClick = async (badgeEl) => {
-            const user = getCurrentUser();
+            let user = getCurrentUser();
             if (!user) {
                 try {
-                    await signInWithGoogle();
-                } catch (e) { }
-            } else {
-                if (badgeEl) {
-                    badgeEl.innerHTML = `🔄 Refreshing cloud data...`;
+                    user = await signInWithGoogle();
+                } catch (e) {
+                    return;
                 }
-                await refreshFromCloud();
+            }
+            if (user) {
+                if (badgeEl) {
+                    badgeEl.innerHTML = `🔄 Syncing cloud data...`;
+                }
+                const res = await refreshFromCloud(user);
                 this.renderStatsModal();
                 this.renderCalendarView();
                 this.renderArchiveList();
                 this.renderArchiveSyncBadge();
+                if (badgeEl) {
+                    if (res && res.success) {
+                        badgeEl.innerHTML = `✅ Synced ${res.count || 0} Puzzles!`;
+                        setTimeout(() => {
+                            this.renderArchiveSyncBadge();
+                            this.renderStatsModal();
+                        }, 2500);
+                    } else if (res && res.error) {
+                        alert(`Cloud Sync Error:\n${res.error}\n\nPlease check your internet connection or try signing in again.`);
+                    }
+                }
             }
         };
 
@@ -494,8 +518,14 @@ class ElementSpellerGame {
                 this.renderArchiveList();
                 this.renderArchiveSyncBadge();
                 this.openModal(this.dom.archiveModal);
-                if (getCurrentUser()) {
-                    await refreshFromCloud();
+
+                // Fetch latest cloud state and update calendar view seamlessly
+                const user = await waitForAuthReady();
+                if (user) {
+                    await refreshFromCloud(user);
+                    this.renderCalendarView();
+                    this.renderArchiveList();
+                    this.renderArchiveSyncBadge();
                 }
             });
         }
@@ -2696,18 +2726,22 @@ if (document.readyState === "loading") {
     bootElementSpeller();
 }
 
-// Register Service Worker for PWA offline & Dock capability
+// Register Service Worker for PWA offline & Dock capability with active auto-update
 if ("serviceWorker" in navigator && (window.location.protocol === "http:" || window.location.protocol === "https:")) {
     navigator.serviceWorker
         .register("./sw.js", { scope: "./" })
         .then((reg) => {
             console.log("Element-Speller Service Worker registered with scope:", reg.scope);
+            // Immediately check for updates on startup so PWA / Dock apps stay fresh
+            reg.update().catch(() => {});
+
             reg.onupdatefound = () => {
                 const installing = reg.installing;
                 if (installing) {
                     installing.onstatechange = () => {
                         if (installing.state === "installed" && navigator.serviceWorker.controller) {
-                            console.log("New game assets cached in background.");
+                            console.log("New version installed. Triggering immediate activation...");
+                            installing.postMessage({ type: "SKIP_WAITING" });
                         }
                     };
                 }
@@ -2716,4 +2750,13 @@ if ("serviceWorker" in navigator && (window.location.protocol === "http:" || win
         .catch((err) => {
             console.warn("Element-Speller Service Worker registration failed:", err);
         });
+
+    let isReloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!isReloading) {
+            isReloading = true;
+            console.log("Service worker updated. Reloading window to load latest code...");
+            window.location.reload();
+        }
+    });
 }

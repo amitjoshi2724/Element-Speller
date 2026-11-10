@@ -58,6 +58,21 @@ export function onAuthChange(callback) {
 }
 
 /**
+ * Returns a promise that resolves with the current user once initial auth resolution completes
+ */
+export function waitForAuthReady() {
+    if (isInitialized) return Promise.resolve(currentAuthUser);
+    return new Promise((resolve) => {
+        const unsub = onAuthChange((user) => {
+            if (isInitialized) {
+                unsub();
+                resolve(user);
+            }
+        });
+    });
+}
+
+/**
  * Get the currently logged-in user
  */
 export function getCurrentUser() {
