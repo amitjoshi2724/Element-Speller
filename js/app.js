@@ -1,5 +1,5 @@
-import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js";
-import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js";
+import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.3.0";
+import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.3.0";
 import {
     getStats,
     getHistory,
@@ -17,10 +17,10 @@ import {
     getTimeBin,
     refreshFromCloud,
     syncToCloud
-} from "./storage.js";
-import { PeriodicTable } from "./periodic-table.js";
-import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js";
-import { isSpellable, getValidNextElements } from "./speller.js";
+} from "./storage.js?v=1.3.0";
+import { PeriodicTable } from "./periodic-table.js?v=1.3.0";
+import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.3.0";
+import { isSpellable, getValidNextElements } from "./speller.js?v=1.3.0";
 
 class ElementSpellerGame {
     constructor() {
@@ -97,19 +97,21 @@ class ElementSpellerGame {
         }, 300);
 
         onStorageChange(() => {
+            this.renderArchiveSyncBadge();
             if (this.dom.statsModal && this.dom.statsModal.classList.contains("active")) {
                 this.renderStatsModal();
             }
             if (this.dom.archiveModal && this.dom.archiveModal.classList.contains("active")) {
                 this.renderCalendarView();
-                this.renderArchiveList();
-                this.renderArchiveSyncBadge();
+                this.renderArchiveList(this.dom.archiveSearchInput ? this.dom.archiveSearchInput.value : "");
             }
-            // If the current date on board was completed remotely, update board
-            if (this.currentDateStr && !this.isGameOver) {
+            // If the current daily puzzle on board was completed remotely (or has a faster remote best time), update board
+            if (!this.isPractice && this.currentDateStr) {
                 const updatedRec = getRecordForDate(this.currentDateStr);
                 if (updatedRec && updatedRec.won) {
-                    this.startPuzzle(this.currentDateStr, false);
+                    if (!this.isGameOver || (updatedRec.solveTimeMs && updatedRec.solveTimeMs !== this.solveTimeMs)) {
+                        this.startPuzzle(this.currentDateStr, false);
+                    }
                 }
             }
         });
@@ -121,12 +123,14 @@ class ElementSpellerGame {
             }
             if (this.dom.archiveModal && this.dom.archiveModal.classList.contains("active")) {
                 this.renderCalendarView();
-                this.renderArchiveList();
+                this.renderArchiveList(this.dom.archiveSearchInput ? this.dom.archiveSearchInput.value : "");
             }
-            if (this.currentDateStr && !this.isGameOver) {
+            if (!this.isPractice && this.currentDateStr) {
                 const updatedRec = getRecordForDate(this.currentDateStr);
                 if (updatedRec && updatedRec.won) {
-                    this.startPuzzle(this.currentDateStr, false);
+                    if (!this.isGameOver || (updatedRec.solveTimeMs && updatedRec.solveTimeMs !== this.solveTimeMs)) {
+                        this.startPuzzle(this.currentDateStr, false);
+                    }
                 }
             }
         });
@@ -498,7 +502,7 @@ class ElementSpellerGame {
                     const res = await refreshFromCloud(user);
                     this.renderStatsModal();
                     this.renderCalendarView();
-                    this.renderArchiveList();
+                    this.renderArchiveList(this.dom.archiveSearchInput ? this.dom.archiveSearchInput.value : "");
                     this.renderArchiveSyncBadge();
                     if (badgeEl) {
                         if (res && res.success) {
@@ -508,24 +512,21 @@ class ElementSpellerGame {
                                 this.renderStatsModal();
                             }, 2500);
                         } else {
-                            badgeEl.innerHTML = `⚠️ Sync Issue`;
+                            badgeEl.innerHTML = `⚠️ Offline • Click to Retry`;
                             setTimeout(() => {
                                 this.renderArchiveSyncBadge();
                                 this.renderStatsModal();
-                            }, 3000);
-                            if (res && res.error) {
-                                alert(`Cloud Sync Notice:\n${res.error}\n\nPlease check your internet connection or try signing in again.`);
-                            }
+                            }, 3500);
                         }
                     }
                 } catch (err) {
                     console.error("Cloud sync failed:", err);
                     if (badgeEl) {
-                        badgeEl.innerHTML = `⚠️ Sync Failed`;
+                        badgeEl.innerHTML = `⚠️ Offline • Click to Retry`;
                         setTimeout(() => {
                             this.renderArchiveSyncBadge();
                             this.renderStatsModal();
-                        }, 3000);
+                        }, 3500);
                     }
                 }
             }
@@ -806,22 +807,40 @@ class ElementSpellerGame {
                 : `📅 Past Puzzle #${this.puzzleNumber} • ${dateStr} • 6 Words`;
             this.dom.modeTitle.textContent = `Element-Speller #${this.puzzleNumber}`;
 
-            if (existingRecord && existingRecord.won && existingRecord.wordRecords && existingRecord.wordRecords.length > 1) {
-                // Completed 6-word puzzle: load the user's exact placed elements
+            if (existingRecord && existingRecord.won) {
+                // Completed puzzle: load the user's placed elements
                 this.isWordRevealed = true;
                 this.hintsUsed = existingRecord.hintsUsed || 0;
                 this.isGameOver = true;
                 this.solveTimeMs = existingRecord.solveTimeMs || 0;
 
-                this.wordStates = existingRecord.wordRecords.map(rec => ({
-                    word: rec.word,
-                    placedElements: (rec.placedElements || []).map(e => {
+                if (existingRecord.wordRecords && Array.isArray(existingRecord.wordRecords) && existingRecord.wordRecords.length > 0) {
+                    this.dailyWords = existingRecord.wordRecords.map(r => r.word);
+                    this.wordStates = existingRecord.wordRecords.map(rec => ({
+                        word: rec.word,
+                        placedElements: (rec.placedElements || []).map(e => {
+                            const canonical = symbolToData[e.symbol?.toLowerCase()];
+                            return canonical ? { ...canonical } : { symbol: e.symbol, name: e.name || e.symbol, number: e.number || "" };
+                        }),
+                        isSolved: true,
+                        solveTimeMs: rec.solveTimeMs || null
+                    }));
+                } else {
+                    const fallbackTiles = (existingRecord.elementsUsed || []).map(e => {
                         const canonical = symbolToData[e.symbol?.toLowerCase()];
                         return canonical ? { ...canonical } : { symbol: e.symbol, name: e.name || e.symbol, number: e.number || "" };
-                    }),
-                    isSolved: true,
-                    solveTimeMs: rec.solveTimeMs || null
-                }));
+                    });
+                    const wordsToUse = (existingRecord.words && existingRecord.words.length > 0)
+                        ? existingRecord.words
+                        : (existingRecord.word ? [existingRecord.word] : this.dailyWords);
+                    this.dailyWords = wordsToUse;
+                    this.wordStates = wordsToUse.map((w, idx) => ({
+                        word: w,
+                        placedElements: idx === 0 ? fallbackTiles : [],
+                        isSolved: true,
+                        solveTimeMs: existingRecord.solveTimeMs || null
+                    }));
+                }
 
                 this.updateModeUI(true);
                 this.renderWordPicker();

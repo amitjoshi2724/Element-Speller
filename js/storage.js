@@ -1,50 +1,19 @@
 /**
- * ElementSpeller - Dual-Layer Storage Module
- * Offline-first localStorage with real-time Firestore cloud synchronization.
- * Supports timer-based solves, streaks, replay/reset, and calendar history.
+ * ElementSpeller - Dual-Layer Storage & Cloud Sync Module (v1.3.0)
+ * Offline-first localStorage with direct Firestore v1 REST API cloud synchronization.
+ * Uses pure HTTPS fetch (POST :batchGet & PATCH) with Firebase Auth ID tokens,
+ * completely eliminating Safari/WebKit @firebase/firestore IndexedDB & WebChannel bugs.
  */
-import { onAuthChange, getCurrentUser } from "./auth.js";
-import { getFirebaseServices } from "./firebase-config.js";
-import { getPuzzleNumber } from "./prng.js";
-
-let firestoreDb = null;
-let firestoreFns = null;
-
-function withTimeout(promise, ms = 8000, errorMsg = "Cloud request timed out") {
-    let timer;
-    const timeout = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(errorMsg)), ms);
-    });
-    return Promise.race([
-        promise.then(res => { clearTimeout(timer); return res; }),
-        timeout
-    ]);
-}
-
-async function loadFirestore() {
-    if (firestoreFns && firestoreDb) return { db: firestoreDb, fns: firestoreFns };
-    try {
-        const services = await getFirebaseServices();
-        if (!services || !services.isAvailable || !services.db) return null;
-        const firestoreModule = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-        firestoreDb = services.db;
-        firestoreFns = {
-            doc: firestoreModule.doc,
-            getDoc: firestoreModule.getDoc,
-            setDoc: firestoreModule.setDoc,
-            onSnapshot: firestoreModule.onSnapshot
-        };
-        return { db: firestoreDb, fns: firestoreFns };
-    } catch (e) {
-        console.warn("Firestore unavailable offline:", e);
-        return null;
-    }
-}
+import { onAuthChange, getCurrentUser } from "./auth.js?v=1.3.0";
+import { FIREBASE_CONFIG, purgeExternalApiCaches } from "./firebase-config.js?v=1.3.0";
+import { getPuzzleNumber, getDailyWords, getTodayDateStr, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.3.0";
 
 const STATS_KEY = "elementspeller_stats_v1";
 const HISTORY_KEY = "elementspeller_history_v1";
 const PRACTICE_HISTORY_KEY = "elementspeller_practice_history_v1";
 const ACTIVE_KEY = "elementspeller_active_state_v1";
+const DELETED_DATES_KEY = "elementspeller_deleted_dates_v1";
+const DAILY_PROGRESS_PREFIX = "elementspeller_progress_v2_";
 
 export const DEFAULT_STATS = {
     played: 0,
@@ -69,6 +38,218 @@ export const DEFAULT_STATS = {
     }
 };
 
+function withTimeout(promise, ms = 8000, errorMsg = "Cloud request timed out") {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(errorMsg)), ms);
+    });
+    return Promise.race([
+        promise.then(res => { clearTimeout(timer); return res; }, err => { clearTimeout(timer); throw err; }),
+        timeout
+    ]);
+}
+
+/**
+ * Convert a plain JS value into Firestore v1 REST Value format
+ */
+function toFirestoreValue(val) {
+    if (val === null || val === undefined) {
+        return { nullValue: null };
+    }
+    if (typeof val === "boolean") {
+        return { booleanValue: val };
+    }
+    if (typeof val === "number") {
+        if (!Number.isFinite(val)) return { nullValue: null };
+        if (Number.isInteger(val)) return { integerValue: String(val) };
+        return { doubleValue: val };
+    }
+    if (typeof val === "string") {
+        return { stringValue: val };
+    }
+    if (Array.isArray(val)) {
+        return { arrayValue: { values: val.map(v => toFirestoreValue(v)) } };
+    }
+    if (typeof val === "object") {
+        const fields = {};
+        for (const [k, v] of Object.entries(val)) {
+            if (v !== undefined) {
+                fields[k] = toFirestoreValue(v);
+            }
+        }
+        return { mapValue: { fields } };
+    }
+    return { stringValue: String(val) };
+}
+
+/**
+ * Convert a Firestore v1 REST Value object back into a plain JS value
+ */
+function fromFirestoreValue(fv) {
+    if (!fv || typeof fv !== "object") return null;
+    if ("nullValue" in fv) return null;
+    if ("booleanValue" in fv) return Boolean(fv.booleanValue);
+    if ("integerValue" in fv) return Number(fv.integerValue);
+    if ("doubleValue" in fv) return Number(fv.doubleValue);
+    if ("stringValue" in fv) return String(fv.stringValue);
+    if ("timestampValue" in fv) return fv.timestampValue;
+    if ("arrayValue" in fv) {
+        const vals = fv.arrayValue?.values;
+        return Array.isArray(vals) ? vals.map(fromFirestoreValue) : [];
+    }
+    if ("mapValue" in fv) {
+        const fields = fv.mapValue?.fields;
+        if (!fields || typeof fields !== "object") return {};
+        const out = {};
+        for (const [k, v] of Object.entries(fields)) {
+            out[k] = fromFirestoreValue(v);
+        }
+        return out;
+    }
+    return null;
+}
+
+function fromFirestoreDocument(docJson) {
+    if (!docJson || !docJson.fields) return {};
+    const out = {};
+    for (const [k, v] of Object.entries(docJson.fields)) {
+        out[k] = fromFirestoreValue(v);
+    }
+    return out;
+}
+
+/**
+ * Get a valid Firebase Auth ID token for REST requests
+ */
+async function getAuthToken(user, forceRefresh = false) {
+    if (!user || typeof user.getIdToken !== "function") return null;
+    try {
+        return await withTimeout(user.getIdToken(forceRefresh), 5000, "Auth token timeout");
+    } catch (e) {
+        console.warn("Failed to get auth token:", e);
+        return null;
+    }
+}
+
+/**
+ * Fetch user document from Cloud Firestore via v1 REST API.
+ * Uses POST :batchGet first (which never gets intercepted by any GET Service Worker cache),
+ * with automatic fallback to GET after purging any external API cache.
+ */
+async function fetchCloudUserDoc(user) {
+    let token = await getAuthToken(user, false);
+    if (!token) throw new Error("Not authenticated");
+
+    const projectId = FIREBASE_CONFIG.projectId;
+    const docPath = `projects/${projectId}/databases/(default)/documents/users/${user.uid}`;
+    const batchUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:batchGet`;
+
+    const doBatchGet = async (bearerToken) => {
+        return await withTimeout(fetch(batchUrl, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${bearerToken}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ documents: [docPath] }),
+            cache: "no-store"
+        }), 7000, "Cloud fetch timed out");
+    };
+
+    try {
+        let res = await doBatchGet(token);
+        if (res.status === 401) {
+            token = await getAuthToken(user, true);
+            if (token) res = await doBatchGet(token);
+        }
+        if (res.ok) {
+            const arr = await res.json();
+            const first = Array.isArray(arr) ? arr[0] : arr;
+            if (first && first.found) {
+                return { exists: true, data: fromFirestoreDocument(first.found) };
+            }
+            if (first && first.missing) {
+                return { exists: false, data: {} };
+            }
+        }
+    } catch (batchErr) {
+        console.warn("Firestore batchGet fallback to GET:", batchErr);
+    }
+
+    // Fallback to direct GET after purging any cached googleapis.com responses
+    await purgeExternalApiCaches();
+    const getUrl = `https://firestore.googleapis.com/v1/${docPath}?_t=${Date.now()}`;
+    const getRes = await withTimeout(fetch(getUrl, {
+        method: "GET",
+        headers: {
+            "Authorization": `Bearer ${token}`
+        },
+        cache: "no-store"
+    }), 7000, "Cloud fetch timed out");
+    await purgeExternalApiCaches();
+
+    if (getRes.status === 404) {
+        return { exists: false, data: {} };
+    }
+    if (!getRes.ok) {
+        const errText = await getRes.text().catch(() => "");
+        throw new Error(`Firestore HTTP ${getRes.status}: ${errText.slice(0, 120)}`);
+    }
+    const docJson = await getRes.json();
+    return { exists: true, data: fromFirestoreDocument(docJson) };
+}
+
+/**
+ * Patch fields on user document in Cloud Firestore via v1 REST API.
+ */
+async function patchCloudUserDoc(user, fieldsObj) {
+    let token = await getAuthToken(user, false);
+    if (!token) throw new Error("Not authenticated");
+
+    const projectId = FIREBASE_CONFIG.projectId;
+    const keys = Object.keys(fieldsObj).filter(k => fieldsObj[k] !== undefined);
+    if (keys.length === 0) return { success: true };
+
+    const maskParams = keys
+        .map(k => {
+            const safeKey = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(k) ? k : `\`${k.replace(/`/g, "\\`")}\``;
+            return `updateMask.fieldPaths=${encodeURIComponent(safeKey)}`;
+        })
+        .join("&");
+
+    const patchUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/${encodeURIComponent(user.uid)}?${maskParams}`;
+
+    const firestoreFields = {};
+    for (const k of keys) {
+        firestoreFields[k] = toFirestoreValue(fieldsObj[k]);
+    }
+    const bodyStr = JSON.stringify({ fields: firestoreFields });
+
+    const doPatch = async (bearerToken) => {
+        return await withTimeout(fetch(patchUrl, {
+            method: "PATCH",
+            headers: {
+                "Authorization": `Bearer ${bearerToken}`,
+                "Content-Type": "application/json"
+            },
+            body: bodyStr,
+            cache: "no-store"
+        }), 7000, "Cloud save timed out");
+    };
+
+    let res = await doPatch(token);
+    if (res.status === 401) {
+        token = await getAuthToken(user, true);
+        if (token) res = await doPatch(token);
+    }
+
+    if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`Firestore save HTTP ${res.status}: ${errText.slice(0, 120)}`);
+    }
+    return { success: true };
+}
+
 export function getTimeBin(ms) {
     if (!ms || ms <= 0) return "> 2m";
     const sec = ms / 1000;
@@ -89,27 +270,68 @@ export function formatTimeMs(ms) {
     return `${m}m ${s}s`;
 }
 
+/**
+ * Ensure any daily record (local or legacy cloud) has complete, consistent fields
+ */
+function normalizeDailyRecord(dateStr, rec) {
+    if (!rec || typeof rec !== "object" || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+    const isSingle = dateStr < SIX_WORD_ERA_START_DATE;
+    const expectedCount = isSingle ? 1 : 6;
+    const dailyInfo = getDailyWords(dateStr, expectedCount);
+
+    const rawNum = String(rec.puzzleNum || dailyInfo.puzzleNumber).replace(/^#/, "");
+    const puzzleNum = Number(rawNum) || dailyInfo.puzzleNumber;
+
+    let words = (Array.isArray(rec.words) && rec.words.length > 0)
+        ? rec.words
+        : (rec.word ? [rec.word] : dailyInfo.words);
+    const primaryWord = rec.word || words[0] || dailyInfo.words[0];
+
+    const solveTimeMs = (rec.solveTimeMs && Number(rec.solveTimeMs) > 0)
+        ? Number(rec.solveTimeMs)
+        : null;
+
+    return {
+        ...rec,
+        dateStr,
+        puzzleNum,
+        word: primaryWord,
+        words,
+        won: Boolean(rec.won),
+        solveTimeMs,
+        hintsUsed: Number(rec.hintsUsed || 0),
+        wordRecords: Array.isArray(rec.wordRecords) ? rec.wordRecords : null,
+        elementsUsed: Array.isArray(rec.elementsUsed)
+            ? rec.elementsUsed
+            : (rec.wordRecords?.[0]?.placedElements || []),
+        timestamp: Number(rec.timestamp || new Date(dateStr + "T12:00:00Z").getTime())
+    };
+}
+
+function loadDeletedDates() {
+    try {
+        const raw = localStorage.getItem(DELETED_DATES_KEY);
+        if (raw) return JSON.parse(raw) || {};
+    } catch (e) {}
+    return {};
+}
+
+function saveDeletedDates(map) {
+    try {
+        localStorage.setItem(DELETED_DATES_KEY, JSON.stringify(map));
+    } catch (e) {}
+}
+
+let memoryDeletedDates = loadDeletedDates();
 let memoryHistory = loadLocalHistory();
 let memoryPracticeHistory = loadLocalPracticeHistory();
 let memoryStats = sanitizeStats(loadLocalStats(), memoryHistory, memoryPracticeHistory);
 
 try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(memoryHistory));
     localStorage.setItem(STATS_KEY, JSON.stringify(memoryStats));
-} catch (e) { }
+} catch (e) {}
 
-// Cross-tab / multi-window storage sync for desktop & browsers
-if (typeof window !== "undefined") {
-    window.addEventListener("storage", (e) => {
-        if (e.key === HISTORY_KEY || e.key === PRACTICE_HISTORY_KEY || e.key === STATS_KEY) {
-            memoryHistory = loadLocalHistory();
-            memoryPracticeHistory = loadLocalPracticeHistory();
-            memoryStats = sanitizeStats(loadLocalStats(), memoryHistory, memoryPracticeHistory);
-            notifyListeners();
-        }
-    });
-}
-
-let firestoreUnsubscribe = null;
 const storageChangeListeners = new Set();
 
 export function onStorageChange(callback) {
@@ -127,10 +349,26 @@ function notifyListeners() {
     });
 }
 
+// Cross-tab / multi-window storage sync for desktop & browsers
+if (typeof window !== "undefined") {
+    window.addEventListener("storage", (e) => {
+        if (e.key === HISTORY_KEY || e.key === PRACTICE_HISTORY_KEY || e.key === STATS_KEY || e.key === DELETED_DATES_KEY) {
+            memoryDeletedDates = loadDeletedDates();
+            memoryHistory = loadLocalHistory();
+            memoryPracticeHistory = loadLocalPracticeHistory();
+            memoryStats = sanitizeStats(loadLocalStats(), memoryHistory, memoryPracticeHistory);
+            notifyListeners();
+        }
+    });
+}
+
 export function loadLocalPracticeHistory() {
     try {
-        let raw = localStorage.getItem(PRACTICE_HISTORY_KEY);
-        if (raw) return JSON.parse(raw);
+        const raw = localStorage.getItem(PRACTICE_HISTORY_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed;
+        }
     } catch (e) {
         console.error("Failed to parse local practice history:", e);
     }
@@ -162,7 +400,17 @@ export function loadLocalHistory() {
             raw = localStorage.getItem("elementle_history_v1");
             if (raw) localStorage.setItem(HISTORY_KEY, raw);
         }
-        if (raw) return JSON.parse(raw);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object") {
+                const normalized = {};
+                for (const [d, r] of Object.entries(parsed)) {
+                    const norm = normalizeDailyRecord(d, r);
+                    if (norm) normalized[d] = norm;
+                }
+                return normalized;
+            }
+        }
     } catch (e) {
         console.error("Failed to parse local history:", e);
     }
@@ -170,7 +418,8 @@ export function loadLocalHistory() {
 }
 
 function computeStreaksFromHistory(history) {
-    const dates = Object.keys(history || {}).sort();
+    const todayStr = getTodayDateStr();
+    const dates = Object.keys(history || {}).filter(d => d <= todayStr).sort();
     if (dates.length === 0) return { currentStreak: 0, maxStreak: 0 };
 
     let maxStreak = 0;
@@ -201,7 +450,6 @@ function computeStreaksFromHistory(history) {
         prevDate = d;
     }
 
-    const todayStr = new Date().toISOString().slice(0, 10);
     const lastDate = dates[dates.length - 1];
     const p = new Date(lastDate + "T00:00:00Z");
     const t = new Date(todayStr + "T00:00:00Z");
@@ -217,7 +465,6 @@ function sanitizeStats(stats, history, practiceHistory = memoryPracticeHistory) 
 
     const dailyEntries = Object.values(history || {});
     const practiceEntries = practiceHistory || [];
-    const allWonGames = [];
 
     let won = 0;
     let totalTime = 0;
@@ -232,12 +479,10 @@ function sanitizeStats(stats, history, practiceHistory = memoryPracticeHistory) 
         "> 2m": 0
     };
 
-    // Process daily entries
     for (const r of dailyEntries) {
-        if (r.won) {
+        if (r && r.won) {
             won++;
-            allWonGames.push(r);
-            if (r.hintsUsed) totalHints += r.hintsUsed;
+            if (r.hintsUsed) totalHints += Number(r.hintsUsed) || 0;
             if (r.solveTimeMs && r.solveTimeMs > 0) {
                 totalTime += r.solveTimeMs;
                 bestTime = (bestTime === null) ? r.solveTimeMs : Math.min(bestTime, r.solveTimeMs);
@@ -247,14 +492,12 @@ function sanitizeStats(stats, history, practiceHistory = memoryPracticeHistory) 
         }
     }
 
-    // Process practice entries
     let practiceWon = 0;
     for (const pr of practiceEntries) {
-        if (pr.won) {
+        if (pr && pr.won) {
             practiceWon++;
             won++;
-            allWonGames.push(pr);
-            if (pr.hintsUsed) totalHints += pr.hintsUsed;
+            if (pr.hintsUsed) totalHints += Number(pr.hintsUsed) || 0;
             if (pr.solveTimeMs && pr.solveTimeMs > 0) {
                 totalTime += pr.solveTimeMs;
                 bestTime = (bestTime === null) ? pr.solveTimeMs : Math.min(bestTime, pr.solveTimeMs);
@@ -277,23 +520,23 @@ function sanitizeStats(stats, history, practiceHistory = memoryPracticeHistory) 
 
     const { currentStreak, maxStreak } = computeStreaksFromHistory(history);
     clean.currentStreak = currentStreak;
-    clean.maxStreak = Math.max(clean.maxStreak, maxStreak);
+    clean.maxStreak = Math.max(clean.maxStreak || 0, maxStreak);
 
     return clean;
 }
 
-export function saveLocalStats(stats) {
+export function saveLocalStats(stats, triggerCloudSync = true) {
     memoryStats = sanitizeStats(stats, memoryHistory, memoryPracticeHistory);
     try {
         localStorage.setItem(STATS_KEY, JSON.stringify(memoryStats));
     } catch (e) {
         console.error("Failed to save local stats:", e);
     }
-    syncToCloud();
+    if (triggerCloudSync) {
+        syncToCloud();
+    }
     notifyListeners();
 }
-
-const DAILY_PROGRESS_PREFIX = "elementspeller_progress_v2_";
 
 let progressSyncTimer = null;
 
@@ -302,14 +545,11 @@ async function syncProgressToCloud(dateStr, progress) {
     if (!user || !dateStr) return;
     clearTimeout(progressSyncTimer);
     progressSyncTimer = setTimeout(async () => {
-        const services = await loadFirestore();
-        if (!services || !services.db || !services.fns) return;
         try {
-            const userRef = services.fns.doc(services.db, "users", user.uid);
-            await services.fns.setDoc(userRef, {
-                [`elementspeller_progress_${dateStr}`]: progress,
+            await patchCloudUserDoc(user, {
+                [`elementspeller_progress_${dateStr}`]: sanitizeForFirestore(progress),
                 lastUpdated: Date.now()
-            }, { merge: true });
+            });
         } catch (e) {
             console.warn("Could not sync active progress to Firestore:", e);
         }
@@ -324,7 +564,7 @@ export function saveDailyProgress(dateStr, progress) {
             progress,
             timestamp: Date.now()
         }));
-    } catch (e) { }
+    } catch (e) {}
     syncProgressToCloud(dateStr, progress);
 }
 
@@ -336,7 +576,7 @@ export function loadDailyProgress(dateStr) {
             const data = JSON.parse(raw);
             if (data && data.dateStr === dateStr) return data.progress;
         }
-    } catch (e) { }
+    } catch (e) {}
     return null;
 }
 
@@ -344,22 +584,17 @@ export function clearDailyProgress(dateStr) {
     if (!dateStr) return;
     try {
         localStorage.removeItem(`${DAILY_PROGRESS_PREFIX}${dateStr}`);
-    } catch (e) { }
+    } catch (e) {}
     const user = getCurrentUser();
     if (user) {
-        loadFirestore().then(services => {
-            if (services && services.db && services.fns) {
-                const userRef = services.fns.doc(services.db, "users", user.uid);
-                services.fns.setDoc(userRef, {
-                    [`elementspeller_progress_${dateStr}`]: null
-                }, { merge: true }).catch(() => {});
-            }
-        });
+        patchCloudUserDoc(user, {
+            [`elementspeller_progress_${dateStr}`]: null
+        }).catch(() => {});
     }
 }
 
 /**
- * Deep recursive sanitizer ensuring zero undefined values reach Firestore setDoc()
+ * Deep recursive sanitizer ensuring zero undefined values
  */
 export function sanitizeForFirestore(val) {
     if (val === undefined) return null;
@@ -383,7 +618,7 @@ export async function recordCompletion(dateStr, puzzleNum, wordOrWords, won, ele
 
     const rawRecord = {
         dateStr,
-        puzzleNum,
+        puzzleNum: Number(String(puzzleNum).replace(/^#/, "")) || getPuzzleNumber(dateStr),
         word: primaryWord,
         words: words,
         won: true,
@@ -394,16 +629,22 @@ export async function recordCompletion(dateStr, puzzleNum, wordOrWords, won, ele
         timestamp: Date.now()
     };
 
-    const record = sanitizeForFirestore(rawRecord);
+    const record = normalizeDailyRecord(dateStr, sanitizeForFirestore(rawRecord));
+
+    // Clear any prior reset marker for this date
+    if (memoryDeletedDates[dateStr]) {
+        delete memoryDeletedDates[dateStr];
+        saveDeletedDates(memoryDeletedDates);
+    }
 
     memoryHistory[dateStr] = record;
     try {
         localStorage.setItem(HISTORY_KEY, JSON.stringify(memoryHistory));
-    } catch (e) { }
+    } catch (e) {}
 
     const stats = sanitizeStats(memoryStats, memoryHistory, memoryPracticeHistory);
     stats.lastPlayedDate = dateStr;
-    saveLocalStats(stats);
+    saveLocalStats(stats, false);
     clearActiveState(dateStr);
     clearDailyProgress(dateStr);
     await syncToCloud();
@@ -418,8 +659,7 @@ export function recordPracticeCompletion(words, won, elementsUsedOrWordRecords, 
     const primaryWord = isArrayWords ? words[0] : words;
     const finalWords = isArrayWords ? words : [words];
     const practiceNum = memoryPracticeHistory.length + 1;
-    const now = new Date();
-    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const dateStr = getTodayDateStr();
 
     const rawRecord = {
         id: `practice_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
@@ -445,10 +685,10 @@ export function recordPracticeCompletion(words, won, elementsUsedOrWordRecords, 
 
     try {
         localStorage.setItem(PRACTICE_HISTORY_KEY, JSON.stringify(memoryPracticeHistory));
-    } catch (e) { }
+    } catch (e) {}
 
     const stats = sanitizeStats(memoryStats, memoryHistory, memoryPracticeHistory);
-    saveLocalStats(stats);
+    saveLocalStats(stats, false);
     syncToCloud();
     notifyListeners();
     return record;
@@ -458,15 +698,19 @@ export function recordPracticeCompletion(words, won, elementsUsedOrWordRecords, 
  * Get all completed game records (Daily + Practice) combined and sorted by timestamp descending
  */
 export function getAllGameRecords() {
-    const dailyRecords = Object.entries(memoryHistory).map(([dateStr, rec]) => ({
-        ...rec,
-        id: `daily_${dateStr}`,
-        mode: "daily",
-        dateStr: dateStr,
-        puzzleNum: rec.puzzleNum || `#${getPuzzleNumber(dateStr)}`,
-        displayNum: `#${rec.puzzleNum || getPuzzleNumber(dateStr)}`,
-        timestamp: rec.timestamp || (new Date(dateStr + "T12:00:00Z").getTime())
-    }));
+    const dailyRecords = Object.entries(memoryHistory).map(([dateStr, rec]) => {
+        const norm = normalizeDailyRecord(dateStr, rec) || rec;
+        const cleanNum = String(norm.puzzleNum || getPuzzleNumber(dateStr)).replace(/^#/, "");
+        return {
+            ...norm,
+            id: `daily_${dateStr}`,
+            mode: "daily",
+            dateStr: dateStr,
+            puzzleNum: Number(cleanNum) || cleanNum,
+            displayNum: `#${cleanNum}`,
+            timestamp: norm.timestamp || (new Date(dateStr + "T12:00:00Z").getTime())
+        };
+    });
     const practiceRecords = (memoryPracticeHistory || []).map(rec => ({
         ...rec,
         mode: "practice",
@@ -480,16 +724,19 @@ export function getAllGameRecords() {
  */
 export async function resetDailyGameResult(dateStr) {
     delete memoryHistory[dateStr];
+    memoryDeletedDates[dateStr] = Date.now();
+    saveDeletedDates(memoryDeletedDates);
+
     try {
         localStorage.setItem(HISTORY_KEY, JSON.stringify(memoryHistory));
-    } catch (e) { }
+    } catch (e) {}
 
     clearActiveState(dateStr);
     clearDailyProgress(dateStr);
     memoryStats = sanitizeStats(memoryStats, memoryHistory, memoryPracticeHistory);
     try {
         localStorage.setItem(STATS_KEY, JSON.stringify(memoryStats));
-    } catch (e) { }
+    } catch (e) {}
 
     await syncToCloud();
     notifyListeners();
@@ -499,7 +746,7 @@ export async function resetDailyGameResult(dateStr) {
 export function saveActiveState(dateStr, state) {
     try {
         localStorage.setItem(ACTIVE_KEY, JSON.stringify({ dateStr, state, timestamp: Date.now() }));
-    } catch (e) { }
+    } catch (e) {}
 }
 
 export function loadActiveState(dateStr) {
@@ -512,7 +759,7 @@ export function loadActiveState(dateStr) {
             const data = JSON.parse(raw);
             if (data.dateStr === dateStr) return data.state;
         }
-    } catch (e) { }
+    } catch (e) {}
     return null;
 }
 
@@ -524,7 +771,7 @@ export function clearActiveState(dateStr) {
             if (data.dateStr === dateStr) localStorage.removeItem(ACTIVE_KEY);
         }
         localStorage.removeItem("elementle_active_state_v1");
-    } catch (e) { }
+    } catch (e) {}
 }
 
 export function getStats() {
@@ -539,36 +786,174 @@ export function getRecordForDate(dateStr) {
     return memoryHistory[dateStr] || null;
 }
 
-let pendingCloudSync = false;
+/**
+ * Merge cloud document data with local memory state without ever losing a solved puzzle
+ */
+function mergeCloudDataIntoLocal(cloudData) {
+    if (!cloudData || typeof cloudData !== "object") return false;
+
+    const cloudStats = cloudData.element_speller_stats || cloudData.elementspeller_stats || cloudData.elementle_stats || {};
+    const cloudDeletedDates = cloudData.elementspeller_deleted_dates || {};
+    const cloudHistory = {
+        ...(cloudData.history || {}),
+        ...(cloudData.elementle_history || {}),
+        ...(cloudData.element_speller_history || {}),
+        ...(cloudData.elementspeller_history || {})
+    };
+
+    // 1. Merge deleted/reset timestamps
+    for (const [dStr, delTs] of Object.entries(cloudDeletedDates)) {
+        if (!delTs) continue;
+        const localRec = memoryHistory[dStr];
+        if (!localRec || (localRec.timestamp || 0) < delTs) {
+            delete memoryHistory[dStr];
+            memoryDeletedDates[dStr] = Math.max(memoryDeletedDates[dStr] || 0, Number(delTs));
+        }
+    }
+    saveDeletedDates(memoryDeletedDates);
+
+    // 2. Merge active puzzle progress from cloud
+    for (const [key, val] of Object.entries(cloudData)) {
+        if (key.startsWith("elementspeller_progress_") && val && typeof val === "object") {
+            const dStr = key.replace("elementspeller_progress_", "");
+            if (memoryHistory[dStr]?.won) continue; // Already solved
+            const localRaw = localStorage.getItem(`${DAILY_PROGRESS_PREFIX}${dStr}`);
+            const localData = localRaw ? JSON.parse(localRaw) : null;
+            if (!localData || (val.timestamp && val.timestamp > (localData.timestamp || 0))) {
+                try {
+                    localStorage.setItem(`${DAILY_PROGRESS_PREFIX}${dStr}`, JSON.stringify({
+                        dateStr: dStr,
+                        progress: val,
+                        timestamp: val.timestamp || Date.now()
+                    }));
+                } catch (e) {}
+            }
+        }
+    }
+
+    // 3. Merge daily history: union of all solved puzzles across devices
+    const mergedHistory = { ...memoryHistory };
+    for (const [date, rawCloudRec] of Object.entries(cloudHistory)) {
+        const rec = normalizeDailyRecord(date, rawCloudRec);
+        if (!rec) continue;
+
+        // If explicitly reset more recently than this cloud record, skip resurrecting it
+        const delTs = memoryDeletedDates[date];
+        if (delTs && delTs > (rec.timestamp || 0)) {
+            continue;
+        }
+
+        const existing = mergedHistory[date];
+        if (!existing) {
+            mergedHistory[date] = rec;
+        } else if (rec.won) {
+            if (!existing.won) {
+                mergedHistory[date] = rec;
+            } else {
+                // Both won: prefer 6-word record on 6-word era dates, then pick fastest solve time
+                const existingWordCount = existing.wordRecords?.length || existing.words?.length || 1;
+                const incomingWordCount = rec.wordRecords?.length || rec.words?.length || 1;
+
+                if (incomingWordCount > existingWordCount) {
+                    mergedHistory[date] = rec;
+                } else if (existingWordCount > incomingWordCount) {
+                    // Keep existing richer record
+                } else {
+                    const bestSolveTime = Math.min(
+                        existing.solveTimeMs || 999999999,
+                        rec.solveTimeMs || 999999999
+                    );
+                    const finalSolveTime = bestSolveTime === 999999999
+                        ? (existing.solveTimeMs || rec.solveTimeMs)
+                        : bestSolveTime;
+                    const fasterRec = (rec.solveTimeMs && (!existing.solveTimeMs || rec.solveTimeMs <= existing.solveTimeMs))
+                        ? rec
+                        : existing;
+
+                    mergedHistory[date] = normalizeDailyRecord(date, {
+                        ...existing,
+                        ...rec,
+                        ...fasterRec,
+                        won: true,
+                        solveTimeMs: finalSolveTime,
+                        wordRecords: fasterRec.wordRecords || rec.wordRecords || existing.wordRecords || null,
+                        elementsUsed: fasterRec.elementsUsed?.length ? fasterRec.elementsUsed : (rec.elementsUsed?.length ? rec.elementsUsed : (existing.elementsUsed || []))
+                    });
+                }
+            }
+        }
+    }
+
+    // 4. Merge practice history from cloud
+    const cloudPractice = cloudData.elementspeller_practice_history || cloudData.practice_history || [];
+    if (Array.isArray(cloudPractice)) {
+        const existingIds = new Set(memoryPracticeHistory.map(p => p.id));
+        for (const pr of cloudPractice) {
+            if (pr && pr.id && !existingIds.has(pr.id)) {
+                memoryPracticeHistory.push(pr);
+                existingIds.add(pr.id);
+            }
+        }
+        memoryPracticeHistory.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        if (memoryPracticeHistory.length > 500) {
+            memoryPracticeHistory = memoryPracticeHistory.slice(0, 500);
+        }
+        try {
+            localStorage.setItem(PRACTICE_HISTORY_KEY, JSON.stringify(memoryPracticeHistory));
+        } catch (e) {}
+    }
+
+    memoryHistory = mergedHistory;
+    memoryStats = sanitizeStats(cloudStats, memoryHistory, memoryPracticeHistory);
+
+    try {
+        localStorage.setItem(STATS_KEY, JSON.stringify(memoryStats));
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(memoryHistory));
+    } catch (e) {}
+
+    return true;
+}
+
+function buildCloudPayload() {
+    const cleanStats = sanitizeStats(memoryStats, memoryHistory, memoryPracticeHistory);
+    return sanitizeForFirestore({
+        element_speller_stats: cleanStats,
+        element_speller_history: memoryHistory,
+        elementspeller_stats: cleanStats,
+        elementspeller_history: memoryHistory,
+        elementspeller_practice_history: memoryPracticeHistory,
+        elementspeller_deleted_dates: memoryDeletedDates,
+        lastUpdated: Date.now()
+    });
+}
+
+let activeSyncPromise = null;
 
 /**
- * Sync local state to Firestore with airtight sanitization
+ * Sync local state with Firestore using an atomic Read-Merge-Write over REST
+ * so no device can ever accidentally overwrite another device's solved puzzles.
  */
 export async function syncToCloud() {
     const user = getCurrentUser();
     if (!user) {
-        pendingCloudSync = true;
         return { success: false, reason: "not_signed_in" };
-    }
-    const services = await loadFirestore();
-    if (!services || !services.db || !services.fns) {
-        return { success: false, reason: "firestore_unavailable" };
     }
 
     try {
-        const userRef = services.fns.doc(services.db, "users", user.uid);
-        const cleanStats = sanitizeStats(memoryStats, memoryHistory, memoryPracticeHistory);
-        const payload = sanitizeForFirestore({
-            element_speller_stats: cleanStats,
-            element_speller_history: memoryHistory,
-            elementspeller_stats: cleanStats,
-            elementspeller_history: memoryHistory,
-            elementspeller_practice_history: memoryPracticeHistory,
-            lastUpdated: Date.now()
-        });
-        await withTimeout(services.fns.setDoc(userRef, payload, { merge: true }), 8000, "Cloud sync timed out");
-        pendingCloudSync = false;
-        return { success: true };
+        // First fetch & merge any remote solves so we never overwrite another browser's solves
+        try {
+            const snap = await fetchCloudUserDoc(user);
+            if (snap && snap.exists && snap.data) {
+                mergeCloudDataIntoLocal(snap.data);
+                notifyListeners();
+            }
+        } catch (readErr) {
+            console.warn("Pre-sync cloud read skipped:", readErr);
+        }
+
+        const payload = buildCloudPayload();
+        await patchCloudUserDoc(user, payload);
+        return { success: true, count: Object.keys(memoryHistory).length };
     } catch (e) {
         console.error("Could not sync ElementSpeller data to Firestore:", e);
         return { success: false, error: e.message || String(e) };
@@ -576,189 +961,91 @@ export async function syncToCloud() {
 }
 
 /**
- * Actively fetch and merge the latest records from Firestore
+ * Actively fetch and merge the latest records from Firestore, then push merged union back
  */
 export async function refreshFromCloud(user = getCurrentUser()) {
     if (!user) return { success: false, reason: "not_signed_in" };
-    const services = await loadFirestore();
-    if (!services || !services.db || !services.fns) {
-        return { success: false, reason: "firestore_unavailable" };
-    }
+    if (activeSyncPromise) return activeSyncPromise;
 
-    try {
-        const userRef = services.fns.doc(services.db, "users", user.uid);
-        const snap = await withTimeout(services.fns.getDoc(userRef), 8000, "Cloud fetch timed out");
+    activeSyncPromise = (async () => {
+        try {
+            const snap = await fetchCloudUserDoc(user);
 
-        if (snap.exists()) {
-            const cloudData = snap.data() || {};
-            const cloudStats = cloudData.element_speller_stats || cloudData.elementspeller_stats || cloudData.elementle_stats || {};
-            const cloudHistory = {
-                ...(cloudData.history || {}),
-                ...(cloudData.elementle_history || {}),
-                ...(cloudData.element_speller_history || {}),
-                ...(cloudData.elementspeller_history || {})
-            };
+            if (snap && snap.exists && snap.data) {
+                mergeCloudDataIntoLocal(snap.data);
+                notifyListeners();
 
-            // Merge active puzzle progress from cloud
-            for (const [key, val] of Object.entries(cloudData)) {
-                if (key.startsWith("elementspeller_progress_") && val) {
-                    const dStr = key.replace("elementspeller_progress_", "");
-                    const localRaw = localStorage.getItem(`${DAILY_PROGRESS_PREFIX}${dStr}`);
-                    const localData = localRaw ? JSON.parse(localRaw) : null;
-                    if (!localData || (val.timestamp && val.timestamp > (localData.timestamp || 0))) {
-                        try {
-                            localStorage.setItem(`${DAILY_PROGRESS_PREFIX}${dStr}`, JSON.stringify({
-                                dateStr: dStr,
-                                progress: val,
-                                timestamp: val.timestamp || Date.now()
-                            }));
-                        } catch (e) { }
-                    }
-                }
+                // Heal/push union back to cloud in background
+                const payload = buildCloudPayload();
+                patchCloudUserDoc(user, payload).catch(err =>
+                    console.warn("Background merge back to cloud warning:", err)
+                );
+
+                return { success: true, count: Object.keys(memoryHistory).length };
+            } else {
+                // First time login for this user: seed cloud with current local stats
+                const payload = buildCloudPayload();
+                await patchCloudUserDoc(user, payload);
+                return { success: true, count: Object.keys(memoryHistory).length };
             }
-
-            // Merge daily history: union of completed puzzles
-            const mergedHistory = { ...memoryHistory };
-            for (const [date, rec] of Object.entries(cloudHistory)) {
-                if (!rec) continue;
-                if (!mergedHistory[date]) {
-                    mergedHistory[date] = rec;
-                } else if (rec.won) {
-                    if (!mergedHistory[date].won) {
-                        mergedHistory[date] = rec;
-                    } else {
-                        // Both won: pick best time and richest data
-                        const bestSolveTime = Math.min(
-                            mergedHistory[date].solveTimeMs || 999999999,
-                            rec.solveTimeMs || 999999999
-                        );
-                        mergedHistory[date] = {
-                            ...mergedHistory[date],
-                            ...rec,
-                            won: true,
-                            solveTimeMs: bestSolveTime === 999999999 ? (mergedHistory[date].solveTimeMs || rec.solveTimeMs) : bestSolveTime,
-                            wordRecords: rec.wordRecords || mergedHistory[date].wordRecords || null,
-                            elementsUsed: rec.elementsUsed || mergedHistory[date].elementsUsed || []
-                        };
-                    }
-                }
-            }
-
-            // Merge practice history from cloud
-            const cloudPractice = cloudData.elementspeller_practice_history || cloudData.practice_history || [];
-            if (Array.isArray(cloudPractice)) {
-                const existingIds = new Set(memoryPracticeHistory.map(p => p.id));
-                for (const pr of cloudPractice) {
-                    if (!existingIds.has(pr.id)) {
-                        memoryPracticeHistory.push(pr);
-                        existingIds.add(pr.id);
-                    }
-                }
-                memoryPracticeHistory.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-                try {
-                    localStorage.setItem(PRACTICE_HISTORY_KEY, JSON.stringify(memoryPracticeHistory));
-                } catch (e) { }
-            }
-
-            memoryHistory = mergedHistory;
-            memoryStats = sanitizeStats(cloudStats, memoryHistory, memoryPracticeHistory);
-
-            localStorage.setItem(STATS_KEY, JSON.stringify(memoryStats));
-            localStorage.setItem(HISTORY_KEY, JSON.stringify(memoryHistory));
-            notifyListeners();
-
-            // Push clean merged data back to cloud to heal any gaps
-            syncToCloud().catch(err => console.warn("Background merge back to cloud failed:", err));
-            return { success: true, count: Object.keys(mergedHistory).length };
-        } else {
-            // First time login for this user: seed cloud with current local stats
-            syncToCloud().catch(err => console.warn("Initial cloud seed failed:", err));
-            return { success: true, count: Object.keys(memoryHistory).length };
+        } catch (e) {
+            console.error("Could not refresh from Firestore:", e);
+            return { success: false, error: e.message || String(e) };
+        } finally {
+            activeSyncPromise = null;
         }
-    } catch (e) {
-        console.error("Could not refresh from Firestore:", e);
-        return { success: false, error: e.message || String(e) };
-    }
+    })();
+
+    return activeSyncPromise;
 }
 
 /**
- * Listen for auth change to load / merge cloud profile
+ * Listen for auth changes and window/tab focus to keep all browsers & Dock PWA in sync automatically
  */
-onAuthChange(async (user) => {
-    if (firestoreUnsubscribe) {
-        firestoreUnsubscribe();
-        firestoreUnsubscribe = null;
-    }
+let lastAutoRefreshTime = 0;
 
+async function triggerAutoCloudRefresh() {
+    const user = getCurrentUser();
+    if (!user) return;
+    const now = Date.now();
+    if (now - lastAutoRefreshTime < 2500) return;
+    lastAutoRefreshTime = now;
+    try {
+        await refreshFromCloud(user);
+    } catch (e) {}
+}
+
+onAuthChange(async (user) => {
     if (!user) {
         notifyListeners();
         return;
     }
-
-    try {
-        await refreshFromCloud(user);
-    } catch (e) {
-        console.warn("Initial refresh on auth change error:", e);
-    }
-
-    const services = await loadFirestore();
-    if (!services || !services.db || !services.fns) return;
-
-    try {
-        const userRef = services.fns.doc(services.db, "users", user.uid);
-        // Setup real-time listener with error handler
-        firestoreUnsubscribe = services.fns.onSnapshot(userRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const updated = docSnap.data() || {};
-                const incomingHist = {
-                    ...(updated.history || {}),
-                    ...(updated.elementle_history || {}),
-                    ...(updated.element_speller_history || {}),
-                    ...(updated.elementspeller_history || {})
-                };
-                const incomingPractice = updated.elementspeller_practice_history || updated.practice_history || [];
-                const incomingStats = updated.element_speller_stats || updated.elementspeller_stats || updated.elementle_stats;
-
-                for (const [date, rec] of Object.entries(incomingHist)) {
-                    if (!rec) continue;
-                    if (!memoryHistory[date]) {
-                        memoryHistory[date] = rec;
-                    } else if (rec.won && !memoryHistory[date].won) {
-                        memoryHistory[date] = rec;
-                    } else if (rec.won && memoryHistory[date].won) {
-                        if (rec.solveTimeMs && (!memoryHistory[date].solveTimeMs || rec.solveTimeMs < memoryHistory[date].solveTimeMs)) {
-                            memoryHistory[date] = { ...memoryHistory[date], ...rec };
-                        }
-                    }
-                }
-
-                if (Array.isArray(incomingPractice)) {
-                    const existingIds = new Set(memoryPracticeHistory.map(p => p.id));
-                    for (const pr of incomingPractice) {
-                        if (!existingIds.has(pr.id)) {
-                            memoryPracticeHistory.push(pr);
-                            existingIds.add(pr.id);
-                        }
-                    }
-                    memoryPracticeHistory.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-                    try {
-                        localStorage.setItem(PRACTICE_HISTORY_KEY, JSON.stringify(memoryPracticeHistory));
-                    } catch (e) { }
-                }
-
-                if (incomingStats) {
-                    memoryStats = sanitizeStats({ ...DEFAULT_STATS, ...incomingStats }, memoryHistory, memoryPracticeHistory);
-                } else {
-                    memoryStats = sanitizeStats(memoryStats, memoryHistory, memoryPracticeHistory);
-                }
-                localStorage.setItem(STATS_KEY, JSON.stringify(memoryStats));
-                localStorage.setItem(HISTORY_KEY, JSON.stringify(memoryHistory));
-                notifyListeners();
-            }
-        }, (err) => {
-            console.warn("Real-time Firestore listener warning:", err);
-        });
-    } catch (e) {
-        console.warn("Error setting up Firestore storage sync:", e);
-    }
+    lastAutoRefreshTime = Date.now();
+    await refreshFromCloud(user);
 });
+
+if (typeof window !== "undefined") {
+    // Sync immediately whenever switching back to this browser / tab / macOS Dock app
+    window.addEventListener("focus", () => {
+        triggerAutoCloudRefresh();
+    });
+
+    window.addEventListener("online", () => {
+        triggerAutoCloudRefresh();
+    });
+
+    if (typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+                triggerAutoCloudRefresh();
+            }
+        });
+
+        // Periodic lightweight heartbeat while tab is visible (keeps side-by-side windows in sync)
+        setInterval(() => {
+            if (document.visibilityState === "visible" && getCurrentUser()) {
+                triggerAutoCloudRefresh();
+            }
+        }, 25000);
+    }
+}

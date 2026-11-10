@@ -1,9 +1,9 @@
 /**
- * Element-Speller Service Worker (v1.2.3)
+ * Element-Speller Service Worker (v1.3.0)
  * Full offline PWA support for macOS Dock, iOS Safari, Android, and Desktop Chrome.
  */
 
-const CACHE_NAME = 'element-speller-v1.2.3';
+const CACHE_NAME = 'element-speller-v1.3.0';
 
 const CORE_ASSETS = [
   './',
@@ -74,6 +74,11 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
+  // NEVER intercept external / cross-origin requests (Firestore, Firebase Auth, Google APIs, Ko-fi, etc.)
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
   // 1. Navigation Requests (Opening page from Dock, browser, or refresh)
   if (event.request.mode === 'navigate') {
     event.respondWith(
@@ -102,29 +107,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. External CDN Requests (Firebase SDK, Ko-fi widget)
-  if (url.origin.includes('gstatic.com') || url.origin.includes('ko-fi.com')) {
-    event.respondWith(
-      caches.match(event.request).then((cachedResponse) => {
-        const fetchPromise = fetch(event.request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.ok) {
-              const clone = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-            }
-            return networkResponse;
-          })
-          .catch(() => cachedResponse);
-
-        return cachedResponse || fetchPromise;
-      })
-    );
-    return;
-  }
-
-  // 3. Local Scripts & Styles: Network-first with fast cache fallback
+  // 2. Local Scripts & Styles: Network-first with fast cache fallback
   const isCode = url.pathname.endsWith('.js') || url.pathname.endsWith('.css') || url.pathname.endsWith('.json');
-  if (isCode && url.origin === self.location.origin) {
+  if (isCode) {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
@@ -139,7 +124,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 4. Media & Icons: Cache-first
+  // 3. Local Media & Icons: Cache-first
   event.respondWith(
     caches.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
       if (cachedResponse) return cachedResponse;
