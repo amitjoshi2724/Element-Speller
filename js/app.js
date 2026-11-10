@@ -14,10 +14,12 @@ import {
     onStorageChange,
     resetDailyGameResult,
     formatTimeMs,
-    getTimeBin
+    getTimeBin,
+    refreshFromCloud,
+    syncToCloud
 } from "./storage.js";
 import { PeriodicTable } from "./periodic-table.js";
-import { setupAuthUI, getCurrentUser } from "./auth.js";
+import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange } from "./auth.js";
 import { isSpellable, getValidNextElements } from "./speller.js";
 
 class ElementSpellerGame {
@@ -101,6 +103,21 @@ class ElementSpellerGame {
             if (this.dom.archiveModal && this.dom.archiveModal.classList.contains("active")) {
                 this.renderCalendarView();
                 this.renderArchiveList();
+                this.renderArchiveSyncBadge();
+            }
+            // If the current date on board was completed remotely, update board
+            if (this.currentDateStr && !this.isGameOver) {
+                const updatedRec = getRecordForDate(this.currentDateStr);
+                if (updatedRec && updatedRec.won) {
+                    this.startPuzzle(this.currentDateStr, false);
+                }
+            }
+        });
+
+        onAuthChange(() => {
+            this.renderArchiveSyncBadge();
+            if (this.dom.statsModal && this.dom.statsModal.classList.contains("active")) {
+                this.renderStatsModal();
             }
         });
     }
@@ -205,6 +222,7 @@ class ElementSpellerGame {
             statsRetryBtn: document.getElementById("stats-retry-btn"),
 
             // Archive elements
+            archiveSyncBadge: document.getElementById("archive-account-sync-badge"),
             archiveTabCal: document.getElementById("archive-tab-calendar"),
             archiveTabList: document.getElementById("archive-tab-list"),
             calView: document.getElementById("archive-calendar-view"),
@@ -443,12 +461,42 @@ class ElementSpellerGame {
             });
         });
 
-        const openArchiveBtn = document.getElementById("open-archive-btn");
-        if (openArchiveBtn) {
-            openArchiveBtn.addEventListener("click", () => {
+        // Interactive Sync Badges: click to refresh from cloud or trigger sign-in
+        const handleSyncBadgeClick = async (badgeEl) => {
+            const user = getCurrentUser();
+            if (!user) {
+                try {
+                    await signInWithGoogle();
+                } catch (e) { }
+            } else {
+                if (badgeEl) {
+                    badgeEl.innerHTML = `🔄 Refreshing cloud data...`;
+                }
+                await refreshFromCloud();
+                this.renderStatsModal();
                 this.renderCalendarView();
                 this.renderArchiveList();
+                this.renderArchiveSyncBadge();
+            }
+        };
+
+        if (this.dom.statsSyncBadge) {
+            this.dom.statsSyncBadge.addEventListener("click", () => handleSyncBadgeClick(this.dom.statsSyncBadge));
+        }
+        if (this.dom.archiveSyncBadge) {
+            this.dom.archiveSyncBadge.addEventListener("click", () => handleSyncBadgeClick(this.dom.archiveSyncBadge));
+        }
+
+        const openArchiveBtn = document.getElementById("open-archive-btn");
+        if (openArchiveBtn) {
+            openArchiveBtn.addEventListener("click", async () => {
+                this.renderCalendarView();
+                this.renderArchiveList();
+                this.renderArchiveSyncBadge();
                 this.openModal(this.dom.archiveModal);
+                if (getCurrentUser()) {
+                    await refreshFromCloud();
+                }
             });
         }
 
@@ -1840,10 +1888,12 @@ class ElementSpellerGame {
         if (this.dom.statsSyncBadge) {
             if (user && user.email) {
                 this.dom.statsSyncBadge.className = "stats-sync-badge synced";
-                this.dom.statsSyncBadge.textContent = `☁️ Synced (${user.email})`;
+                this.dom.statsSyncBadge.innerHTML = `☁️ Synced (${user.email}) <span style="font-size: 0.75em; opacity: 0.8; margin-left: 2px;">🔄</span>`;
+                this.dom.statsSyncBadge.title = "Cloud synchronized. Click to force refresh.";
             } else {
                 this.dom.statsSyncBadge.className = "stats-sync-badge local";
-                this.dom.statsSyncBadge.textContent = "💾 Saved Locally";
+                this.dom.statsSyncBadge.innerHTML = "💾 Local Only • Click to Sign In & Sync";
+                this.dom.statsSyncBadge.title = "Saved locally on this device. Click to sign in and sync across all devices!";
             }
         }
 
@@ -2437,6 +2487,20 @@ class ElementSpellerGame {
                 this.renderArchiveList(this.dom.archiveSearchInput ? this.dom.archiveSearchInput.value : "");
             };
         });
+    }
+
+    renderArchiveSyncBadge() {
+        if (!this.dom.archiveSyncBadge) return;
+        const user = getCurrentUser();
+        if (user && user.email) {
+            this.dom.archiveSyncBadge.className = "stats-sync-badge synced";
+            this.dom.archiveSyncBadge.innerHTML = `☁️ Synced (${user.email}) <span style="font-size: 0.75em; opacity: 0.8; margin-left: 2px;">🔄</span>`;
+            this.dom.archiveSyncBadge.title = "Cloud synchronized. Click to force refresh.";
+        } else {
+            this.dom.archiveSyncBadge.className = "stats-sync-badge local";
+            this.dom.archiveSyncBadge.innerHTML = `💾 Local Only • Click to Sign In & Sync`;
+            this.dom.archiveSyncBadge.title = "Saved locally on this device. Click to sign in and sync across all devices!";
+        }
     }
 
     renderCalendarView() {

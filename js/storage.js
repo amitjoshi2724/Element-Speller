@@ -85,6 +85,18 @@ try {
     localStorage.setItem(STATS_KEY, JSON.stringify(memoryStats));
 } catch (e) { }
 
+// Cross-tab / multi-window storage sync for desktop & browsers
+if (typeof window !== "undefined") {
+    window.addEventListener("storage", (e) => {
+        if (e.key === HISTORY_KEY || e.key === PRACTICE_HISTORY_KEY || e.key === STATS_KEY) {
+            memoryHistory = loadLocalHistory();
+            memoryPracticeHistory = loadLocalPracticeHistory();
+            memoryStats = sanitizeStats(loadLocalStats(), memoryHistory, memoryPracticeHistory);
+            notifyListeners();
+        }
+    });
+}
+
 let firestoreUnsubscribe = null;
 const storageChangeListeners = new Set();
 
@@ -334,6 +346,14 @@ export function clearDailyProgress(dateStr) {
     }
 }
 
+/**
+ * Deep recursive sanitizer ensuring zero undefined values reach Firestore setDoc()
+ */
+export function sanitizeForFirestore(val) {
+    if (val === undefined) return null;
+    return JSON.parse(JSON.stringify(val, (key, value) => (value === undefined ? null : value)));
+}
+
 export function recordCompletion(dateStr, puzzleNum, wordOrWords, won, elementsUsedOrWordRecords, solveTimeMs, hintsUsed = 0) {
     const existing = memoryHistory[dateStr];
     const isArrayWords = Array.isArray(wordOrWords);
@@ -349,18 +369,20 @@ export function recordCompletion(dateStr, puzzleNum, wordOrWords, won, elementsU
     const words = isArrayWords ? wordOrWords : [wordOrWords];
     const primaryWord = isArrayWords ? wordOrWords[0] : wordOrWords;
 
-    const record = {
+    const rawRecord = {
         dateStr,
         puzzleNum,
         word: primaryWord,
         words: words,
         won: true,
-        solveTimeMs: finalSolveTime,
+        solveTimeMs: finalSolveTime || null,
         hintsUsed: (hintsUsed !== undefined && hintsUsed !== null) ? hintsUsed : (existing?.hintsUsed || 0),
         wordRecords: isArrayWords ? elementsUsedOrWordRecords : null,
         elementsUsed: isArrayWords ? (elementsUsedOrWordRecords?.[0]?.placedElements || []) : elementsUsedOrWordRecords,
         timestamp: Date.now()
     };
+
+    const record = sanitizeForFirestore(rawRecord);
 
     memoryHistory[dateStr] = record;
     try {
@@ -386,7 +408,7 @@ export function recordPracticeCompletion(words, won, elementsUsedOrWordRecords, 
     const now = new Date();
     const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
-    const record = {
+    const rawRecord = {
         id: `practice_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
         mode: "practice",
         puzzleNum: `Practice #${practiceNum}`,
@@ -400,6 +422,8 @@ export function recordPracticeCompletion(words, won, elementsUsedOrWordRecords, 
         dateStr: dateStr,
         timestamp: Date.now()
     };
+
+    const record = sanitizeForFirestore(rawRecord);
 
     memoryPracticeHistory.unshift(record);
     if (memoryPracticeHistory.length > 500) {
@@ -502,52 +526,61 @@ export function getRecordForDate(dateStr) {
     return memoryHistory[dateStr] || null;
 }
 
+let pendingCloudSync = false;
+
 /**
- * Sync local state to Firestore
+ * Sync local state to Firestore with airtight sanitization
  */
-async function syncToCloud() {
+export async function syncToCloud() {
     const user = getCurrentUser();
-    if (!user) return;
+    if (!user) {
+        pendingCloudSync = true;
+        return false;
+    }
     const services = await loadFirestore();
-    if (!services || !services.db || !services.fns) return;
+    if (!services || !services.db || !services.fns) return false;
 
     try {
         const userRef = services.fns.doc(services.db, "users", user.uid);
         const cleanStats = sanitizeStats(memoryStats, memoryHistory, memoryPracticeHistory);
-        await services.fns.setDoc(userRef, {
+        const payload = sanitizeForFirestore({
             element_speller_stats: cleanStats,
             element_speller_history: memoryHistory,
             elementspeller_stats: cleanStats,
             elementspeller_history: memoryHistory,
             elementspeller_practice_history: memoryPracticeHistory,
             lastUpdated: Date.now()
-        }, { merge: true });
+        });
+        await services.fns.setDoc(userRef, payload, { merge: true });
+        pendingCloudSync = false;
+        return true;
     } catch (e) {
         console.warn("Could not sync ElementSpeller data to Firestore:", e);
+        return false;
     }
 }
 
 /**
- * Listen for auth change to load / merge cloud profile
+ * Actively fetch and merge the latest records from Firestore
  */
-onAuthChange(async (user) => {
-    if (firestoreUnsubscribe) {
-        firestoreUnsubscribe();
-        firestoreUnsubscribe = null;
-    }
-
-    if (!user) return;
+export async function refreshFromCloud(user = getCurrentUser()) {
+    if (!user) return false;
     const services = await loadFirestore();
-    if (!services || !services.db || !services.fns) return;
+    if (!services || !services.db || !services.fns) return false;
 
     try {
         const userRef = services.fns.doc(services.db, "users", user.uid);
         const snap = await services.fns.getDoc(userRef);
 
         if (snap.exists()) {
-            const cloudData = snap.data();
+            const cloudData = snap.data() || {};
             const cloudStats = cloudData.element_speller_stats || cloudData.elementspeller_stats || cloudData.elementle_stats || {};
-            const cloudHistory = cloudData.element_speller_history || cloudData.elementspeller_history || cloudData.elementle_history || {};
+            const cloudHistory = {
+                ...(cloudData.history || {}),
+                ...(cloudData.elementle_history || {}),
+                ...(cloudData.element_speller_history || {}),
+                ...(cloudData.elementspeller_history || {})
+            };
 
             // Merge active puzzle progress from cloud
             for (const [key, val] of Object.entries(cloudData)) {
@@ -570,19 +603,35 @@ onAuthChange(async (user) => {
             // Merge daily history: union of completed puzzles
             const mergedHistory = { ...memoryHistory };
             for (const [date, rec] of Object.entries(cloudHistory)) {
+                if (!rec) continue;
                 if (!mergedHistory[date]) {
                     mergedHistory[date] = rec;
                 } else if (rec.won) {
-                    if (!mergedHistory[date].won || (rec.solveTimeMs && (!mergedHistory[date].solveTimeMs || rec.solveTimeMs < mergedHistory[date].solveTimeMs))) {
+                    if (!mergedHistory[date].won) {
                         mergedHistory[date] = rec;
+                    } else {
+                        // Both won: pick best time and richest data
+                        const bestSolveTime = Math.min(
+                            mergedHistory[date].solveTimeMs || 999999999,
+                            rec.solveTimeMs || 999999999
+                        );
+                        mergedHistory[date] = {
+                            ...mergedHistory[date],
+                            ...rec,
+                            won: true,
+                            solveTimeMs: bestSolveTime === 999999999 ? (mergedHistory[date].solveTimeMs || rec.solveTimeMs) : bestSolveTime,
+                            wordRecords: rec.wordRecords || mergedHistory[date].wordRecords || null,
+                            elementsUsed: rec.elementsUsed || mergedHistory[date].elementsUsed || []
+                        };
                     }
                 }
             }
 
             // Merge practice history from cloud
-            if (cloudData.elementspeller_practice_history && Array.isArray(cloudData.elementspeller_practice_history)) {
+            const cloudPractice = cloudData.elementspeller_practice_history || cloudData.practice_history || [];
+            if (Array.isArray(cloudPractice)) {
                 const existingIds = new Set(memoryPracticeHistory.map(p => p.id));
-                for (const pr of cloudData.elementspeller_practice_history) {
+                for (const pr of cloudPractice) {
                     if (!existingIds.has(pr.id)) {
                         memoryPracticeHistory.push(pr);
                         existingIds.add(pr.id);
@@ -603,20 +652,66 @@ onAuthChange(async (user) => {
 
             // Push clean merged data back to cloud
             await syncToCloud();
+            return true;
         } else {
             // First time login for this user: seed cloud with current local stats
             await syncToCloud();
+            return true;
         }
+    } catch (e) {
+        console.warn("Could not refresh from Firestore:", e);
+        return false;
+    }
+}
 
+/**
+ * Listen for auth change to load / merge cloud profile
+ */
+onAuthChange(async (user) => {
+    if (firestoreUnsubscribe) {
+        firestoreUnsubscribe();
+        firestoreUnsubscribe = null;
+    }
+
+    if (!user) {
+        notifyListeners();
+        return;
+    }
+
+    await refreshFromCloud(user);
+
+    const services = await loadFirestore();
+    if (!services || !services.db || !services.fns) return;
+
+    try {
+        const userRef = services.fns.doc(services.db, "users", user.uid);
         // Setup real-time listener for multi-tab or cross-device updates
         firestoreUnsubscribe = services.fns.onSnapshot(userRef, (docSnap) => {
             if (docSnap.exists()) {
-                const updated = docSnap.data();
-                const incomingHist = updated.element_speller_history || updated.elementspeller_history || updated.elementle_history;
-                const incomingPractice = updated.elementspeller_practice_history;
+                const updated = docSnap.data() || {};
+                const incomingHist = {
+                    ...(updated.history || {}),
+                    ...(updated.elementle_history || {}),
+                    ...(updated.element_speller_history || {}),
+                    ...(updated.elementspeller_history || {})
+                };
+                const incomingPractice = updated.elementspeller_practice_history || updated.practice_history || [];
                 const incomingStats = updated.element_speller_stats || updated.elementspeller_stats || updated.elementle_stats;
-                if (incomingHist) memoryHistory = { ...memoryHistory, ...incomingHist };
-                if (incomingPractice && Array.isArray(incomingPractice)) {
+
+                for (const [date, rec] of Object.entries(incomingHist)) {
+                    if (!rec) continue;
+                    if (!memoryHistory[date]) {
+                        memoryHistory[date] = rec;
+                    } else if (rec.won && !memoryHistory[date].won) {
+                        memoryHistory[date] = rec;
+                    } else if (rec.won && memoryHistory[date].won) {
+                        if (rec.solveTimeMs && (!memoryHistory[date].solveTimeMs || rec.solveTimeMs < memoryHistory[date].solveTimeMs)) {
+                            memoryHistory[date] = { ...memoryHistory[date], ...rec };
+                        }
+                    }
+                }
+
+                if (Array.isArray(incomingPractice)) {
                     const existingIds = new Set(memoryPracticeHistory.map(p => p.id));
                     for (const pr of incomingPractice) {
                         if (!existingIds.has(pr.id)) {
@@ -629,6 +724,7 @@ onAuthChange(async (user) => {
                         localStorage.setItem(PRACTICE_HISTORY_KEY, JSON.stringify(memoryPracticeHistory));
                     } catch (e) { }
                 }
+
                 if (incomingStats) {
                     memoryStats = sanitizeStats({ ...DEFAULT_STATS, ...incomingStats }, memoryHistory, memoryPracticeHistory);
                 } else {
