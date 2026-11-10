@@ -5,9 +5,21 @@
  */
 import { onAuthChange, getCurrentUser } from "./auth.js";
 import { getFirebaseServices } from "./firebase-config.js";
+import { getPuzzleNumber } from "./prng.js";
 
 let firestoreDb = null;
 let firestoreFns = null;
+
+function withTimeout(promise, ms = 8000, errorMsg = "Cloud request timed out") {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(errorMsg)), ms);
+    });
+    return Promise.race([
+        promise.then(res => { clearTimeout(timer); return res; }),
+        timeout
+    ]);
+}
 
 async function loadFirestore() {
     if (firestoreFns && firestoreDb) return { db: firestoreDb, fns: firestoreFns };
@@ -554,7 +566,7 @@ export async function syncToCloud() {
             elementspeller_practice_history: memoryPracticeHistory,
             lastUpdated: Date.now()
         });
-        await services.fns.setDoc(userRef, payload, { merge: true });
+        await withTimeout(services.fns.setDoc(userRef, payload, { merge: true }), 8000, "Cloud sync timed out");
         pendingCloudSync = false;
         return { success: true };
     } catch (e) {
@@ -575,7 +587,7 @@ export async function refreshFromCloud(user = getCurrentUser()) {
 
     try {
         const userRef = services.fns.doc(services.db, "users", user.uid);
-        const snap = await services.fns.getDoc(userRef);
+        const snap = await withTimeout(services.fns.getDoc(userRef), 8000, "Cloud fetch timed out");
 
         if (snap.exists()) {
             const cloudData = snap.data() || {};
@@ -656,11 +668,11 @@ export async function refreshFromCloud(user = getCurrentUser()) {
             notifyListeners();
 
             // Push clean merged data back to cloud to heal any gaps
-            await syncToCloud();
+            syncToCloud().catch(err => console.warn("Background merge back to cloud failed:", err));
             return { success: true, count: Object.keys(mergedHistory).length };
         } else {
             // First time login for this user: seed cloud with current local stats
-            await syncToCloud();
+            syncToCloud().catch(err => console.warn("Initial cloud seed failed:", err));
             return { success: true, count: Object.keys(memoryHistory).length };
         }
     } catch (e) {
@@ -683,7 +695,11 @@ onAuthChange(async (user) => {
         return;
     }
 
-    await refreshFromCloud(user);
+    try {
+        await refreshFromCloud(user);
+    } catch (e) {
+        console.warn("Initial refresh on auth change error:", e);
+    }
 
     const services = await loadFirestore();
     if (!services || !services.db || !services.fns) return;

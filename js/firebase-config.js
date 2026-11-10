@@ -24,11 +24,22 @@ export async function getFirebaseServices() {
         try {
             const { initializeApp, getApps, getApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
             const { getAuth, GoogleAuthProvider } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
-            const { getFirestore } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+            const { initializeFirestore, memoryLocalCache, getFirestore } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
 
             _app = getApps().length > 0 ? getApp() : initializeApp(FIREBASE_CONFIG);
             _auth = getAuth(_app);
-            _db = getFirestore(_app);
+
+            // In WebKit / Safari / macOS Dock PWA, IndexedDB persistence in Firebase v10
+            // triggers 'INTERNAL ASSERTION FAILED: Unexpected state' in AsyncQueue.
+            // Since ElementSpeller handles full offline persistence via localStorage,
+            // using memoryLocalCache() prevents Safari IndexedDB lease crashes entirely.
+            try {
+                _db = initializeFirestore(_app, {
+                    localCache: memoryLocalCache()
+                });
+            } catch (err) {
+                _db = getFirestore(_app);
+            }
             _googleProvider = new GoogleAuthProvider();
             _googleProvider.setCustomParameters({ prompt: 'select_account' });
 

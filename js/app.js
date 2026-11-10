@@ -443,9 +443,18 @@ class ElementSpellerGame {
 
         const openStatsBtn = document.getElementById("open-stats-btn");
         if (openStatsBtn) {
-            openStatsBtn.addEventListener("click", () => {
+            openStatsBtn.addEventListener("click", async () => {
                 this.renderStatsModal();
                 this.openModal(this.dom.statsModal);
+                const user = await waitForAuthReady();
+                if (user) {
+                    try {
+                        await refreshFromCloud(user);
+                        this.renderStatsModal();
+                    } catch (e) {
+                        console.warn("Stats background cloud refresh warning:", e);
+                    }
+                }
             });
         }
 
@@ -485,20 +494,38 @@ class ElementSpellerGame {
                 if (badgeEl) {
                     badgeEl.innerHTML = `🔄 Syncing cloud data...`;
                 }
-                const res = await refreshFromCloud(user);
-                this.renderStatsModal();
-                this.renderCalendarView();
-                this.renderArchiveList();
-                this.renderArchiveSyncBadge();
-                if (badgeEl) {
-                    if (res && res.success) {
-                        badgeEl.innerHTML = `✅ Synced ${res.count || 0} Puzzles!`;
+                try {
+                    const res = await refreshFromCloud(user);
+                    this.renderStatsModal();
+                    this.renderCalendarView();
+                    this.renderArchiveList();
+                    this.renderArchiveSyncBadge();
+                    if (badgeEl) {
+                        if (res && res.success) {
+                            badgeEl.innerHTML = `✅ Synced ${res.count || 0} Puzzles!`;
+                            setTimeout(() => {
+                                this.renderArchiveSyncBadge();
+                                this.renderStatsModal();
+                            }, 2500);
+                        } else {
+                            badgeEl.innerHTML = `⚠️ Sync Issue`;
+                            setTimeout(() => {
+                                this.renderArchiveSyncBadge();
+                                this.renderStatsModal();
+                            }, 3000);
+                            if (res && res.error) {
+                                alert(`Cloud Sync Notice:\n${res.error}\n\nPlease check your internet connection or try signing in again.`);
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error("Cloud sync failed:", err);
+                    if (badgeEl) {
+                        badgeEl.innerHTML = `⚠️ Sync Failed`;
                         setTimeout(() => {
                             this.renderArchiveSyncBadge();
                             this.renderStatsModal();
-                        }, 2500);
-                    } else if (res && res.error) {
-                        alert(`Cloud Sync Error:\n${res.error}\n\nPlease check your internet connection or try signing in again.`);
+                        }, 3000);
                     }
                 }
             }
@@ -522,10 +549,14 @@ class ElementSpellerGame {
                 // Fetch latest cloud state and update calendar view seamlessly
                 const user = await waitForAuthReady();
                 if (user) {
-                    await refreshFromCloud(user);
-                    this.renderCalendarView();
-                    this.renderArchiveList();
-                    this.renderArchiveSyncBadge();
+                    try {
+                        await refreshFromCloud(user);
+                        this.renderCalendarView();
+                        this.renderArchiveList();
+                        this.renderArchiveSyncBadge();
+                    } catch (e) {
+                        console.warn("Archive background refresh warning:", e);
+                    }
                 }
             });
         }
