@@ -1,5 +1,5 @@
-import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.1";
-import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.1";
+import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.2";
+import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.2";
 import {
     getStats,
     getHistory,
@@ -17,10 +17,10 @@ import {
     getTimeBin,
     refreshFromCloud,
     syncToCloud
-} from "./storage.js?v=1.4.1";
-import { PeriodicTable } from "./periodic-table.js?v=1.4.1";
-import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.1";
-import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.1";
+} from "./storage.js?v=1.4.2";
+import { PeriodicTable } from "./periodic-table.js?v=1.4.2";
+import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.2";
+import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.2";
 
 class ElementSpellerGame {
     constructor() {
@@ -2451,19 +2451,22 @@ class ElementSpellerGame {
                 statusDot = "hint";
             }
 
-            const wordList = g.words || [g.word];
-            const primaryWord = wordList[0] || g.word || "Puzzle";
-            const wordCountTag = wordList.length > 1
-                ? `<span class="stats-word-pill-tag">${wordList.length} words</span>`
-                : `<span class="stats-word-pill-tag">1 word</span>`;
+            const wordList = (g.words && g.words.length > 0 ? g.words : [g.word || "Puzzle"])
+                .map(w => String(w || "").trim().toUpperCase())
+                .filter(Boolean);
+            const wordChipsHtml = wordList
+                .map(w => `<span class="stats-word-chip">${w}</span>`)
+                .join("");
 
             const isSelected = (this.selectedGameId === g.id);
 
             return `
                 <tr class="${isSelected ? 'is-selected' : ''}" data-game-id="${g.id}">
                     <td class="col-word">
-                        <span class="game-status-dot ${statusDot}"></span>
-                        <strong>${primaryWord}</strong> ${wordCountTag}
+                        <div class="stats-words-cell">
+                            <span class="game-status-dot ${statusDot}"></span>
+                            <div class="stats-words-list">${wordChipsHtml}</div>
+                        </div>
                     </td>
                     <td class="col-hints">${g.hintsUsed > 0 ? g.hintsUsed : '—'}</td>
                     <td class="col-time">${g.won ? formatTimeMs(g.solveTimeMs) : 'Unfinished'}</td>

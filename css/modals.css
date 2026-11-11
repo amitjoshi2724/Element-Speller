@@ -588,8 +588,9 @@
 
 /* History Table */
 .stats-history-table-wrapper {
-    max-height: 290px;
+    max-height: 310px;
     overflow-y: auto;
+    overflow-x: auto;
     border: 1px solid var(--stats-border-subtle);
     border-radius: 10px;
     background: var(--stats-bg);
@@ -610,7 +611,7 @@
     font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    padding: 9px 12px;
+    padding: 9px 10px;
     position: sticky;
     top: 0;
     border-bottom: 1px solid var(--stats-border-subtle);
@@ -618,9 +619,26 @@
 }
 
 .stats-history-table td {
-    padding: 9px 12px;
+    padding: 8px 10px;
     border-bottom: 1px solid var(--stats-border-subtle);
     color: var(--stats-text);
+    vertical-align: middle;
+}
+
+.stats-history-table th.col-hints,
+.stats-history-table td.col-hints,
+.stats-history-table th.col-time,
+.stats-history-table td.col-time,
+.stats-history-table th.col-mode,
+.stats-history-table td.col-mode,
+.stats-history-table th.col-date,
+.stats-history-table td.col-date {
+    white-space: nowrap;
+    width: 1%;
+}
+
+.stats-history-table td.col-word {
+    min-width: 180px;
 }
 
 .stats-history-table tr {
@@ -641,23 +659,40 @@
     height: 8px;
     border-radius: 2px;
     display: inline-block;
-    margin-right: 8px;
-    vertical-align: middle;
+    flex-shrink: 0;
 }
 
 .game-status-dot.solved { background: #7c3aed; }
 .game-status-dot.hint { background: #ec4899; }
 .game-status-dot.gaveup { background: #94a3b8; }
 
-.stats-word-pill-tag {
+.stats-words-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.stats-words-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 5px;
+    min-width: 0;
+}
+
+.stats-word-chip {
     display: inline-block;
     background: var(--stats-pill-tag-bg);
-    color: var(--stats-pill-tag-text);
-    font-size: 0.68rem;
-    padding: 1px 6px;
-    border-radius: 4px;
-    margin-left: 6px;
-    font-weight: 600;
+    color: var(--stats-heading);
+    border: 1px solid var(--stats-border-subtle);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 1.25;
+    padding: 2px 6px;
+    border-radius: 5px;
+    white-space: nowrap;
 }
 
 /* Settings Modal */
@@ -1880,6 +1915,20 @@
     .calendar-day-cell {
         min-height: 46px;
         padding: 4px 2px;
+    }
+
+    .stats-history-table th,
+    .stats-history-table td {
+        padding: 7px 6px;
+    }
+
+    .stats-history-table td.col-word {
+        min-width: 150px;
+    }
+
+    .stats-word-chip {
+        font-size: 0.68rem;
+        padding: 1.5px 5px;
     }
 }
 
