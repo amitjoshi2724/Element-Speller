@@ -177,7 +177,7 @@ export class PeriodicTable {
         this.scale = 1.0;
         this.panX = 0;
         this.panY = 0;
-        this.minScale = 0.6;
+        this.minScale = 0.35;
         this.maxScale = 3.5;
         this.isDragging = false;
         this.hasDragged = false;
@@ -203,6 +203,9 @@ export class PeriodicTable {
         // Default inspection to Carbon (#6)
         const carbon = PERIODIC_ELEMENTS.find(e => e.s === 'C');
         if (carbon) this.selectElement(carbon);
+
+        // Fit full periodic table cleanly into narrow mobile viewports after layout
+        requestAnimationFrame(() => this.resetZoom(false));
     }
 
     renderGrid() {
@@ -496,11 +499,31 @@ export class PeriodicTable {
         });
 
         window.addEventListener('resize', () => {
+            const isMobile = window.innerWidth < 1000;
+            if (isMobile) {
+                const fit = this.getFitScale();
+                if (this.scale <= fit * 1.1) {
+                    this.resetZoom(false);
+                    return;
+                }
+            } else if (this.viewport) {
+                this.viewport.style.height = '';
+            }
             this.clampPan();
             this.applyTransform(false);
         });
 
         this.applyTransform(false);
+    }
+
+    getFitScale() {
+        if (!this.viewport || !this.gridContainer) return 1.0;
+        if (window.innerWidth >= 1000) return 1.0;
+        const vRect = this.viewport.getBoundingClientRect();
+        const gridW = this.gridContainer.scrollWidth || 0;
+        if (!vRect.width || !gridW || gridW <= vRect.width) return 1.0;
+        const pad = 10;
+        return Math.max(this.minScale, Math.min(1.0, (vRect.width - pad) / gridW));
     }
 
     zoomAt(targetScale, clientX, clientY, animate = true) {
@@ -529,11 +552,21 @@ export class PeriodicTable {
         this.zoomAt(this.scale / 1.25, undefined, undefined, true);
     }
 
-    resetZoom() {
-        this.scale = 1.0;
-        this.panX = 0;
+    resetZoom(animate = true) {
+        if (!this.viewport || !this.gridContainer) {
+            this.scale = 1.0;
+            this.panX = 0;
+            this.panY = 0;
+            this.applyTransform(animate);
+            return;
+        }
+        const fit = this.getFitScale();
+        this.scale = fit;
+        const vRect = this.viewport.getBoundingClientRect();
+        const scaledW = (this.gridContainer.scrollWidth || vRect.width) * this.scale;
+        this.panX = Math.max(0, (vRect.width - scaledW) / 2);
         this.panY = 0;
-        this.applyTransform(true);
+        this.applyTransform(animate);
     }
 
     clampPan() {
@@ -542,8 +575,8 @@ export class PeriodicTable {
         const cWidth = (this.gridContainer.scrollWidth || vRect.width) * this.scale;
         const cHeight = (this.gridContainer.scrollHeight || vRect.height) * this.scale;
 
-        const maxMarginX = Math.max(60, vRect.width * 0.5);
-        const maxMarginY = Math.max(60, vRect.height * 0.5);
+        const maxMarginX = Math.max(40, vRect.width * 0.35);
+        const maxMarginY = Math.max(40, vRect.height * 0.35);
 
         const minX = vRect.width - cWidth - maxMarginX;
         const maxX = maxMarginX;
@@ -558,6 +591,19 @@ export class PeriodicTable {
         if (!this.canvas) return;
         this.canvas.style.transition = animate ? 'transform 0.22s cubic-bezier(0.2, 0, 0, 1)' : 'none';
         this.canvas.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.scale})`;
+
+        if (this.viewport && this.gridContainer) {
+            if (window.innerWidth < 1000) {
+                const gridH = this.gridContainer.scrollHeight || 0;
+                if (gridH > 0) {
+                    const targetH = Math.max(175, Math.min(340, Math.ceil(gridH * this.scale + 12)));
+                    this.viewport.style.height = `${targetH}px`;
+                }
+            } else {
+                this.viewport.style.height = '';
+            }
+        }
+
         if (this.zoomDisplay) {
             this.zoomDisplay.textContent = `${Math.round(this.scale * 100)}%`;
         }

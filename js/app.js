@@ -1,5 +1,5 @@
-import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.3.0";
-import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.3.0";
+import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.0";
+import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.0";
 import {
     getStats,
     getHistory,
@@ -17,10 +17,10 @@ import {
     getTimeBin,
     refreshFromCloud,
     syncToCloud
-} from "./storage.js?v=1.3.0";
-import { PeriodicTable } from "./periodic-table.js?v=1.3.0";
-import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.3.0";
-import { isSpellable, getValidNextElements } from "./speller.js?v=1.3.0";
+} from "./storage.js?v=1.4.0";
+import { PeriodicTable } from "./periodic-table.js?v=1.4.0";
+import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.0";
+import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.0";
 
 class ElementSpellerGame {
     constructor() {
@@ -201,6 +201,9 @@ class ElementSpellerGame {
             howToPlayModal: document.getElementById("how-to-play-modal"),
             statsModal: document.getElementById("stats-modal"),
             archiveModal: document.getElementById("archive-modal"),
+            settingsModal: document.getElementById("settings-modal"),
+            darkModeToggle: document.getElementById("dark-mode-toggle"),
+            settingsSyncStatus: document.getElementById("settings-sync-status"),
 
             // Periodic table section on main screen
             periodicTableSection: document.getElementById("periodic-table-section"),
@@ -445,6 +448,40 @@ class ElementSpellerGame {
             openHelpBtn.addEventListener("click", () => this.openModal(this.dom.howToPlayModal));
         }
 
+        const openSettingsBtn = document.getElementById("open-settings-btn");
+        if (openSettingsBtn) {
+            openSettingsBtn.addEventListener("click", () => {
+                const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+                if (this.dom.darkModeToggle) {
+                    this.dom.darkModeToggle.checked = isDark;
+                }
+                if (this.dom.settingsSyncStatus) {
+                    const user = getCurrentUser();
+                    this.dom.settingsSyncStatus.textContent = user && user.email
+                        ? `Signed in as ${user.email}. Solves sync automatically across devices.`
+                        : `Sign in with Google to automatically sync daily & practice solves across Safari, Chrome, and PWA apps.`;
+                }
+                this.openModal(this.dom.settingsModal);
+            });
+        }
+
+        if (this.dom.darkModeToggle) {
+            const savedTheme = localStorage.getItem("elementspeller_theme_v1");
+            const isDark = savedTheme === "dark" || document.documentElement.getAttribute("data-theme") === "dark";
+            this.dom.darkModeToggle.checked = isDark;
+            this.dom.darkModeToggle.addEventListener("change", (e) => {
+                const theme = e.target.checked ? "dark" : "light";
+                if (theme === "dark") {
+                    document.documentElement.setAttribute("data-theme", "dark");
+                } else {
+                    document.documentElement.removeAttribute("data-theme");
+                }
+                try {
+                    localStorage.setItem("elementspeller_theme_v1", theme);
+                } catch (err) {}
+            });
+        }
+
         const openStatsBtn = document.getElementById("open-stats-btn");
         if (openStatsBtn) {
             openStatsBtn.addEventListener("click", async () => {
@@ -578,6 +615,9 @@ class ElementSpellerGame {
                 this.dom.ptToggleBtn.setAttribute("aria-expanded", isCurrentlyHidden ? "true" : "false");
                 if (this.dom.ptToggleIcon) this.dom.ptToggleIcon.textContent = isCurrentlyHidden ? "▾" : "▴";
                 if (this.dom.ptToggleLabel) this.dom.ptToggleLabel.textContent = isCurrentlyHidden ? "Hide Table" : "Show Table";
+                if (isCurrentlyHidden && this.periodicTable) {
+                    requestAnimationFrame(() => this.periodicTable.resetZoom(false));
+                }
             });
         }
 
@@ -2103,12 +2143,9 @@ class ElementSpellerGame {
             if (!isFuture && games.length > 0) {
                 const wonGames = games.filter(g => g.won);
                 if (wonGames.length > 0) {
-                    const hasSnipe = wonGames.some(g => g.solveTimeMs && g.solveTimeMs < 60000);
                     const allZeroHints = wonGames.every(g => !g.hintsUsed || g.hintsUsed === 0);
 
-                    if (hasSnipe) {
-                        swatchClass = "swatch-snipe";
-                    } else if (allZeroHints) {
+                    if (allZeroHints) {
                         swatchClass = "swatch-solved";
                     } else {
                         swatchClass = "swatch-hint";
@@ -2194,8 +2231,6 @@ class ElementSpellerGame {
             let statusDot = "solved";
             if (!g.won) {
                 statusDot = "gaveup";
-            } else if (g.solveTimeMs && g.solveTimeMs < 60000) {
-                statusDot = "snipe";
             } else if (g.hintsUsed > 0) {
                 statusDot = "hint";
             }
