@@ -1,5 +1,5 @@
-import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.0";
-import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.0";
+import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.1";
+import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.1";
 import {
     getStats,
     getHistory,
@@ -17,10 +17,10 @@ import {
     getTimeBin,
     refreshFromCloud,
     syncToCloud
-} from "./storage.js?v=1.4.0";
-import { PeriodicTable } from "./periodic-table.js?v=1.4.0";
-import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.0";
-import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.0";
+} from "./storage.js?v=1.4.1";
+import { PeriodicTable } from "./periodic-table.js?v=1.4.1";
+import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.1";
+import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.1";
 
 class ElementSpellerGame {
     constructor() {
@@ -58,7 +58,7 @@ class ElementSpellerGame {
         this.selectedGameId = null;
 
         this.initDOM();
-        this.initDatalist();
+        this.initElementAutocomplete();
         this.initPeriodicTable();
         this.initEventListeners();
         this.setupArchiveTabs();
@@ -157,7 +157,9 @@ class ElementSpellerGame {
             modePracticeBtn: document.getElementById("mode-practice-btn"),
             targetWordDisplay: document.getElementById("target-word-display"),
             elementSlotsRow: document.getElementById("element-slots-row"),
+            elementInputWrapper: document.getElementById("element-input-wrapper"),
             elementInput: document.getElementById("element-input"),
+            elementSuggestions: document.getElementById("element-suggestions"),
             submitBtn: document.getElementById("submit-element-btn"),
             statusMessage: document.getElementById("status-message"),
             elementDetails: document.getElementById("pt-inspect-card") || document.getElementById("element-details"),
@@ -263,21 +265,241 @@ class ElementSpellerGame {
     }
 
     /**
-     * Populate datalist without duplicates.
-     * Each element appears exactly once in the format: "[Symbol] - Name"
+     * Initialize accessible custom autocomplete dropdown for element input,
+     * replacing the inconsistent native browser <datalist>.
      */
-    initDatalist() {
-        const datalist = document.getElementById("elements-datalist");
-        if (!datalist) return;
-        datalist.innerHTML = "";
+    initElementAutocomplete() {
+        this.allElementsList = symbols
+            .filter(sym => Boolean(elementData[sym]))
+            .map(sym => ({
+                symbol: sym,
+                name: elementData[sym].name,
+                number: elementData[sym].number
+            }));
+        this.filteredSuggestions = [];
+        this.activeSuggestionIdx = -1;
 
-        // Exactly 118 options, one per element, no duplicates
-        for (const sym of symbols) {
-            const data = elementData[sym];
-            if (!data) continue;
-            const opt = document.createElement("option");
-            opt.value = `${sym} - ${data.name}`;
-            datalist.appendChild(opt);
+        const input = this.dom.elementInput;
+        const listEl = this.dom.elementSuggestions;
+        if (!input || !listEl) return;
+
+        input.addEventListener("input", () => {
+            this.updateSuggestions(input.value);
+        });
+
+        input.addEventListener("focus", () => {
+            if (input.value.trim()) {
+                this.updateSuggestions(input.value);
+            }
+        });
+
+        input.addEventListener("blur", () => {
+            // Delay slightly so mousedown/click on mobile still registers cleanly
+            setTimeout(() => {
+                if (!this.dom.elementInputWrapper?.contains(document.activeElement)) {
+                    this.hideSuggestions();
+                }
+            }, 120);
+        });
+
+        input.addEventListener("keydown", (e) => {
+            const isOpen = !listEl.classList.contains("hidden") && this.filteredSuggestions.length > 0;
+
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                if (!isOpen && input.value.trim()) {
+                    this.updateSuggestions(input.value);
+                }
+                if (this.filteredSuggestions.length > 0) {
+                    this.activeSuggestionIdx = this.activeSuggestionIdx < 0
+                        ? 0
+                        : (this.activeSuggestionIdx + 1) % this.filteredSuggestions.length;
+                    this.highlightActiveSuggestion();
+                }
+                return;
+            }
+
+            if (e.key === "ArrowUp") {
+                if (!isOpen) return;
+                e.preventDefault();
+                this.activeSuggestionIdx = this.activeSuggestionIdx <= 0
+                    ? this.filteredSuggestions.length - 1
+                    : this.activeSuggestionIdx - 1;
+                this.highlightActiveSuggestion();
+                return;
+            }
+
+            if (e.key === "Tab") {
+                if (isOpen && this.filteredSuggestions.length > 0) {
+                    e.preventDefault();
+                    const idx = this.activeSuggestionIdx >= 0 ? this.activeSuggestionIdx : 0;
+                    const chosen = this.filteredSuggestions[idx];
+                    if (chosen) {
+                        input.value = chosen.name;
+                    }
+                    this.hideSuggestions();
+                }
+                return;
+            }
+
+            if (e.key === "Escape") {
+                if (isOpen) {
+                    e.preventDefault();
+                    this.hideSuggestions();
+                }
+                return;
+            }
+
+            if (e.key === "Enter") {
+                e.preventDefault();
+                if (isOpen && this.activeSuggestionIdx >= 0 && this.filteredSuggestions[this.activeSuggestionIdx]) {
+                    this.selectSuggestion(this.filteredSuggestions[this.activeSuggestionIdx]);
+                } else {
+                    this.hideSuggestions();
+                    this.handleGuess();
+                }
+            }
+        });
+
+        document.addEventListener("click", (e) => {
+            if (this.dom.elementInputWrapper && !this.dom.elementInputWrapper.contains(e.target)) {
+                this.hideSuggestions();
+            }
+        });
+    }
+
+    getMatchingElements(query) {
+        const q = String(query || "").trim().toLowerCase();
+        if (!q) return [];
+        const qNoHash = q.replace(/^#/, "");
+        const scored = [];
+
+        for (const elem of this.allElementsList) {
+            const symLower = elem.symbol.toLowerCase();
+            const nameLower = elem.name.toLowerCase();
+            const numStr = String(elem.number);
+
+            let score = -1;
+            if (symLower === q) score = 0;
+            else if (nameLower === q) score = 1;
+            else if (qNoHash && numStr === qNoHash) score = 2;
+            else if (symLower.startsWith(q)) score = 3;
+            else if (nameLower.startsWith(q)) score = 4;
+            else if (symLower.includes(q)) score = 5;
+            else if (nameLower.includes(q)) score = 6;
+            else if (qNoHash && numStr.startsWith(qNoHash)) score = 7;
+
+            if (score >= 0) {
+                scored.push({ elem, score });
+            }
+        }
+
+        scored.sort((a, b) => {
+            if (a.score !== b.score) return a.score - b.score;
+            if (a.elem.name.length !== b.elem.name.length) return a.elem.name.length - b.elem.name.length;
+            return a.elem.number - b.elem.number;
+        });
+
+        return scored.slice(0, 12).map(item => item.elem);
+    }
+
+    updateSuggestions(query) {
+        const listEl = this.dom.elementSuggestions;
+        const input = this.dom.elementInput;
+        if (!listEl || !input) return;
+
+        const matches = this.getMatchingElements(query);
+        this.filteredSuggestions = matches;
+        this.activeSuggestionIdx = -1;
+        listEl.innerHTML = "";
+
+        if (matches.length === 0) {
+            this.hideSuggestions();
+            return;
+        }
+
+        matches.forEach((elem, idx) => {
+            const itemBtn = document.createElement("button");
+            itemBtn.type = "button";
+            itemBtn.id = `element-suggestion-${idx}`;
+            itemBtn.className = "element-suggestion-item";
+            itemBtn.setAttribute("role", "option");
+            itemBtn.setAttribute("aria-selected", "false");
+
+            const symBadge = document.createElement("span");
+            symBadge.className = "suggestion-sym-badge";
+            symBadge.textContent = elem.symbol;
+
+            const nameSpan = document.createElement("span");
+            nameSpan.className = "suggestion-name";
+            nameSpan.textContent = elem.name;
+
+            const numSpan = document.createElement("span");
+            numSpan.className = "suggestion-num";
+            numSpan.textContent = `#${elem.number}`;
+
+            itemBtn.appendChild(symBadge);
+            itemBtn.appendChild(nameSpan);
+            itemBtn.appendChild(numSpan);
+
+            // Prevent input blur before selection completes
+            itemBtn.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+            });
+            itemBtn.addEventListener("click", (e) => {
+                e.preventDefault();
+                this.selectSuggestion(elem);
+            });
+
+            listEl.appendChild(itemBtn);
+        });
+
+        listEl.classList.remove("hidden");
+        input.setAttribute("aria-expanded", "true");
+        input.removeAttribute("aria-activedescendant");
+    }
+
+    highlightActiveSuggestion() {
+        const listEl = this.dom.elementSuggestions;
+        const input = this.dom.elementInput;
+        if (!listEl || !input) return;
+
+        const items = listEl.querySelectorAll(".element-suggestion-item");
+        items.forEach((el, idx) => {
+            const isActive = idx === this.activeSuggestionIdx;
+            el.classList.toggle("active", isActive);
+            el.setAttribute("aria-selected", isActive ? "true" : "false");
+            if (isActive) {
+                input.setAttribute("aria-activedescendant", el.id);
+                el.scrollIntoView({ block: "nearest" });
+            }
+        });
+    }
+
+    selectSuggestion(elem) {
+        if (!elem) return;
+        this.hideSuggestions();
+        if (this.dom.elementInput) {
+            this.dom.elementInput.value = "";
+        }
+        this.handleGuess(elem.symbol);
+        if (this.dom.elementInput && !this.isGameOver && !this.isPaused) {
+            this.dom.elementInput.focus();
+        }
+    }
+
+    hideSuggestions() {
+        const listEl = this.dom.elementSuggestions;
+        const input = this.dom.elementInput;
+        this.activeSuggestionIdx = -1;
+        this.filteredSuggestions = [];
+        if (listEl) {
+            listEl.classList.add("hidden");
+            listEl.innerHTML = "";
+        }
+        if (input) {
+            input.setAttribute("aria-expanded", "false");
+            input.removeAttribute("aria-activedescendant");
         }
     }
 
@@ -312,16 +534,9 @@ class ElementSpellerGame {
     initEventListeners() {
         // Submit on button click
         if (this.dom.submitBtn) {
-            this.dom.submitBtn.addEventListener("click", () => this.handleGuess());
-        }
-
-        // Submit on Enter key in input
-        if (this.dom.elementInput) {
-            this.dom.elementInput.addEventListener("keydown", (e) => {
-                if (e.key === "Enter") {
-                    e.preventDefault();
-                    this.handleGuess();
-                }
+            this.dom.submitBtn.addEventListener("click", () => {
+                this.hideSuggestions();
+                this.handleGuess();
             });
         }
 
@@ -1674,6 +1889,7 @@ class ElementSpellerGame {
             this.dom.elementInput.value = "";
             this.dom.elementInput.focus();
         }
+        this.hideSuggestions();
 
         this.checkSolveVictory();
         this.saveCurrentProgress();

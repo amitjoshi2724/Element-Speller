@@ -20,8 +20,8 @@
     <link rel="icon" type="image/png" sizes="64x64" href="images/icon-64.png">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="css/style.css?v=1.4.0">
-    <link rel="stylesheet" href="css/modals.css?v=1.4.0">
+    <link rel="stylesheet" href="css/style.css?v=1.4.1">
+    <link rel="stylesheet" href="css/modals.css?v=1.4.1">
     <script>
         (function() {
             try {
@@ -171,12 +171,14 @@
                 <!-- Element Guess Input -->
                 <div class="input-group" id="input-group-area">
                     <div class="input-row">
-                        <input type="text" id="element-input" list="elements-datalist"
-                            placeholder="Enter element name or symbol (e.g. Carbon, C)..." autocomplete="off" spellcheck="false"
-                            autocorrect="off" autocapitalize="none" autofocus>
-                        <datalist id="elements-datalist">
-                            <!-- Populated dynamically with all 118 periodic table elements -->
-                        </datalist>
+                        <div class="element-input-wrapper" id="element-input-wrapper">
+                            <input type="text" id="element-input"
+                                placeholder="Enter element name or symbol (e.g. Carbon, C)..." autocomplete="off" spellcheck="false"
+                                autocorrect="off" autocapitalize="none" role="combobox" aria-autocomplete="list"
+                                aria-expanded="false" aria-controls="element-suggestions" autofocus>
+                            <div id="element-suggestions" class="element-suggestions hidden" role="listbox"
+                                aria-label="Element suggestions"></div>
+                        </div>
                         <button id="submit-element-btn" class="primary-btn">Submit Element</button>
                     </div>
                 </div>
@@ -601,7 +603,7 @@
     </div>
 
     <!-- Core Game Controller -->
-    <script type="module" src="js/app.js?v=1.4.0"></script>
+    <script type="module" src="js/app.js?v=1.4.1"></script>
 </body>
 
 </html>
