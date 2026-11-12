@@ -3,7 +3,7 @@
  * Handles Google Sign-In, Sign-Out, and Auth State subscriptions.
  * Works seamlessly offline with dynamic imports.
  */
-import { getFirebaseServices } from './firebase-config.js?v=1.4.3';
+import { getFirebaseServices } from './firebase-config.js?v=1.4.4';
 
 const authListeners = new Set();
 let currentAuthUser = null;

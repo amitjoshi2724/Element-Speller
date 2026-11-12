@@ -1,5 +1,5 @@
-import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.3";
-import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.3";
+import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.4";
+import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.4";
 import {
     getStats,
     getHistory,
@@ -17,10 +17,10 @@ import {
     getTimeBin,
     refreshFromCloud,
     syncToCloud
-} from "./storage.js?v=1.4.3";
-import { PeriodicTable } from "./periodic-table.js?v=1.4.3";
-import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.3";
-import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.3";
+} from "./storage.js?v=1.4.4";
+import { PeriodicTable } from "./periodic-table.js?v=1.4.4";
+import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.4";
+import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.4";
 
 class ElementSpellerGame {
     constructor() {

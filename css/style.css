@@ -2105,3 +2105,61 @@ input, textarea {
     color: #e9d5ff;
 }
 
+[data-theme="dark"] .live-timer-display {
+    color: #f8fafc;
+}
+
+[data-theme="dark"] .matched-chars {
+    color: #4ade80;
+    border-bottom-color: #4ade80;
+}
+
+[data-theme="dark"] .unmatched-chars {
+    color: #f1f5f9;
+}
+
+[data-theme="dark"] .empty-tiles-placeholder {
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .element-slot.filled.dead-end-hinted {
+    border-color: #ef4444 !important;
+    background-color: #451a24 !important;
+}
+
+[data-theme="dark"] .element-slot.filled.drop-target {
+    border: 2px dashed #818cf8 !important;
+    background-color: #1e294a !important;
+}
+
+[data-theme="dark"] #status-message.success {
+    color: #86efac;
+    background-color: #122b20;
+    border-color: #22c55e;
+}
+
+[data-theme="dark"] #status-message.error {
+    color: #fca5a5;
+    background-color: #3b1c26;
+    border-color: #ef4444;
+}
+
+[data-theme="dark"] #status-message.info {
+    color: #93c5fd;
+    background-color: #142642;
+    border-color: #3b82f6;
+}
+
+[data-theme="dark"] #status-message.warning,
+[data-theme="dark"] #status-message.hint-deadend {
+    color: #fca5a5;
+    background-color: #3b1c26;
+    border-color: #ef4444;
+}
+
+[data-theme="dark"] #status-message.hint-message {
+    color: #fde047;
+    background-color: #2e250e;
+    border-color: #eab308;
+}
+
