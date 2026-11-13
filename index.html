@@ -20,8 +20,8 @@
     <link rel="icon" type="image/png" sizes="64x64" href="images/icon-64.png">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="css/style.css?v=1.4.4">
-    <link rel="stylesheet" href="css/modals.css?v=1.4.4">
+    <link rel="stylesheet" href="css/style.css?v=1.4.5">
+    <link rel="stylesheet" href="css/modals.css?v=1.4.5">
     <script>
         (function() {
             try {
@@ -55,6 +55,9 @@
                     <span class="mode-icon">🎯</span> Practice
                 </button>
             </div>
+            <button id="open-challenge-btn" class="nav-action-btn challenge-nav-btn" title="Create a random puzzle and send to a friend over text">
+                <span>⚔️ Challenge</span>
+            </button>
             <button id="open-archive-btn" class="nav-action-btn" title="Browse calendar archive of past daily puzzles">
                 <span>📅 Archive</span>
             </button>
@@ -164,6 +167,8 @@
                             title="Share result with emoji blocks (no spoilers)">📋 Share (No Spoilers)</button>
                         <button id="share-score-spoiler-btn" class="share-btn secondary"
                             title="Share full solution with element words">👁️ Share (With Spoilers)</button>
+                        <button id="challenge-friend-solved-btn" class="share-btn challenge-btn"
+                            title="Send this exact puzzle to a friend over text to see if they can beat your time!">⚔️ Challenge a Friend</button>
                         <button id="solved-replay-btn" class="quick-action-btn reset">🔄 Retry for Faster Time</button>
                     </div>
                 </div>
@@ -524,6 +529,93 @@
         </div>
     </div>
 
+    <!-- Friend Challenge Modal -->
+    <div class="modal-overlay" id="challenge-modal" role="dialog" aria-modal="true" aria-labelledby="challenge-modal-title">
+        <div class="modal-card challenge-modal-card">
+            <div class="modal-header">
+                <div class="modal-title-with-badge">
+                    <h3 class="modal-title" id="challenge-modal-title">⚔️ Challenge a Friend</h3>
+                </div>
+                <button type="button" class="modal-close-btn" id="close-challenge-modal-btn" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body challenge-modal-body">
+                <p class="challenge-desc">
+                    Send a random puzzle to a friend over text. The words are <strong>encrypted in the link</strong> so your friend won't see spoilers!
+                </p>
+
+                <!-- Puzzle Source Selector -->
+                <div class="challenge-source-selector">
+                    <label class="challenge-radio-card" id="challenge-opt-current-card">
+                        <input type="radio" name="challenge-source-opt" id="challenge-opt-current" value="current" checked>
+                        <div class="challenge-radio-content">
+                            <span class="challenge-radio-title">Use Current Puzzle Words</span>
+                            <span class="challenge-radio-sub" id="challenge-opt-current-sub">Send the exact words on your board right now</span>
+                        </div>
+                    </label>
+                    <label class="challenge-radio-card" id="challenge-opt-random-card">
+                        <input type="radio" name="challenge-source-opt" id="challenge-opt-random" value="random">
+                        <div class="challenge-radio-content">
+                            <span class="challenge-radio-title">🎲 Roll New Random 6-Word Set</span>
+                            <span class="challenge-radio-sub">Generate a brand new random puzzle for you both</span>
+                        </div>
+                    </label>
+                </div>
+
+                <div class="challenge-reroll-container" id="challenge-reroll-container" style="display: none;">
+                    <button type="button" class="quick-action-btn" id="challenge-reroll-btn">🎲 Re-roll Another 6 Words</button>
+                    <span class="challenge-reroll-status" id="challenge-reroll-status">Fresh 6-word set ready!</span>
+                </div>
+
+                <!-- Word Preview & Peek Box -->
+                <div class="challenge-words-preview-card">
+                    <div class="challenge-preview-top">
+                        <span class="challenge-preview-title" id="challenge-preview-count-label">6 Words in this Challenge</span>
+                        <button type="button" class="challenge-peek-btn" id="challenge-peek-btn">👁️ Peek Words (Spoiler)</button>
+                    </div>
+                    <div class="challenge-words-chips-row" id="challenge-words-chips-row">
+                        <!-- Shows word tags or length tags -->
+                    </div>
+                </div>
+
+                <!-- Sender time inclusion toggle (active if solved) -->
+                <div class="challenge-time-card" id="challenge-time-card" style="display: none;">
+                    <label class="challenge-checkbox-label">
+                        <input type="checkbox" id="challenge-include-time-check" checked>
+                        <span>Include my time (<strong id="challenge-time-stat-preview">00:00</strong>) to challenge them to beat it!</span>
+                    </label>
+                </div>
+
+                <!-- Link & Share Box -->
+                <div class="challenge-link-card">
+                    <label class="challenge-field-label" for="challenge-link-input">Encrypted Challenge Link:</label>
+                    <div class="challenge-link-input-row">
+                        <input type="text" id="challenge-link-input" class="challenge-link-input" readonly spellcheck="false" autocomplete="off">
+                        <button type="button" class="challenge-copy-btn" id="challenge-copy-link-btn" title="Copy link">📋 Copy</button>
+                    </div>
+                </div>
+
+                <!-- Text Message Preview -->
+                <div class="challenge-msg-preview-card">
+                    <span class="challenge-field-label">Text Message Preview:</span>
+                    <div class="challenge-msg-body" id="challenge-msg-body"></div>
+                </div>
+
+                <!-- Primary Action Buttons -->
+                <div class="challenge-actions-grid">
+                    <button type="button" class="share-btn challenge-send-btn" id="challenge-send-text-btn">
+                        💬 Send via Text / Share
+                    </button>
+                    <button type="button" class="share-btn secondary" id="challenge-copy-all-btn">
+                        📋 Copy Message &amp; Link
+                    </button>
+                </div>
+                <div class="challenge-toast hidden" id="challenge-toast">
+                    ✅ Copied to clipboard! Ready to paste into your text message.
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Past Puzzles Archive Modal (Mastermindle Calendar & List View) -->
     <div class="modal-overlay" id="archive-modal">
         <div class="modal-card archive-modal-card">
@@ -603,7 +695,7 @@
     </div>
 
     <!-- Core Game Controller -->
-    <script type="module" src="js/app.js?v=1.4.4"></script>
+    <script type="module" src="js/app.js?v=1.4.5"></script>
 </body>
 
 </html>

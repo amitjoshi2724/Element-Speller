@@ -1,12 +1,12 @@
 /**
- * ElementSpeller - Dual-Layer Storage & Cloud Sync Module (v1.4.4)
+ * ElementSpeller - Dual-Layer Storage & Cloud Sync Module (v1.4.5)
  * Offline-first localStorage with direct Firestore v1 REST API cloud synchronization.
  * Uses pure HTTPS fetch (POST :batchGet & PATCH) with Firebase Auth ID tokens,
  * completely eliminating Safari/WebKit @firebase/firestore IndexedDB & WebChannel bugs.
  */
-import { onAuthChange, getCurrentUser } from "./auth.js?v=1.4.4";
-import { FIREBASE_CONFIG, purgeExternalApiCaches } from "./firebase-config.js?v=1.4.4";
-import { getPuzzleNumber, getDailyWords, getTodayDateStr, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.4";
+import { onAuthChange, getCurrentUser } from "./auth.js?v=1.4.5";
+import { FIREBASE_CONFIG, purgeExternalApiCaches } from "./firebase-config.js?v=1.4.5";
+import { getPuzzleNumber, getDailyWords, getTodayDateStr, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.5";
 
 const STATS_KEY = "elementspeller_stats_v1";
 const HISTORY_KEY = "elementspeller_history_v1";
@@ -652,19 +652,22 @@ export async function recordCompletion(dateStr, puzzleNum, wordOrWords, won, ele
 }
 
 /**
- * Record a completed practice game so player can remember and review past practice games
+ * Record a completed practice or challenge game so player can remember and review past games
  */
-export function recordPracticeCompletion(words, won, elementsUsedOrWordRecords, solveTimeMs, hintsUsed = 0) {
+export function recordPracticeCompletion(words, won, elementsUsedOrWordRecords, solveTimeMs, hintsUsed = 0, mode = "practice", customPuzzleNum = null) {
     const isArrayWords = Array.isArray(words);
     const primaryWord = isArrayWords ? words[0] : words;
     const finalWords = isArrayWords ? words : [words];
     const practiceNum = memoryPracticeHistory.length + 1;
     const dateStr = getTodayDateStr();
 
+    const recordMode = mode || "practice";
+    const defaultPuzzleNum = (recordMode === "challenge") ? "Friend Challenge" : `Practice #${practiceNum}`;
+
     const rawRecord = {
-        id: `practice_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        mode: "practice",
-        puzzleNum: `Practice #${practiceNum}`,
+        id: `${recordMode}_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        mode: recordMode,
+        puzzleNum: customPuzzleNum || defaultPuzzleNum,
         word: primaryWord,
         words: finalWords,
         won: !!won,

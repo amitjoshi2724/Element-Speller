@@ -1,5 +1,5 @@
-import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.4";
-import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.4";
+import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.5";
+import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.5";
 import {
     getStats,
     getHistory,
@@ -17,16 +17,33 @@ import {
     getTimeBin,
     refreshFromCloud,
     syncToCloud
-} from "./storage.js?v=1.4.4";
-import { PeriodicTable } from "./periodic-table.js?v=1.4.4";
-import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.4";
-import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.4";
+} from "./storage.js?v=1.4.5";
+import { PeriodicTable } from "./periodic-table.js?v=1.4.5";
+import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.5";
+import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.5";
+import {
+    encodeChallengeWords,
+    decodeChallengeWords,
+    buildChallengeURL,
+    buildChallengeMessage,
+    shareChallengePayload,
+    generateRandomChallengeWords
+} from "./challenge.js?v=1.4.5";
 
 class ElementSpellerGame {
     constructor() {
         this.todayStr = getTodayDateStr();
         this.currentDateStr = this.todayStr;
         this.isPractice = false;
+        this.isChallenge = false;
+        this.challengeWords = null;
+        this.challengeToken = null;
+        this.challengeSourceMode = "current";
+        this.activeChallengeWords = [];
+        this.isChallengePeekRevealed = false;
+        this.currentChallengeUrl = "";
+        this.currentChallengeMsg = "";
+        this.challengeToastTimer = null;
 
         // 6-Word Daily Set State
         this.dailyWords = [];
@@ -65,7 +82,9 @@ class ElementSpellerGame {
         setupAuthUI("auth-container");
 
         this.checkURLParamsAndStorage();
-        if (this.isPractice) {
+        if (this.isChallenge && this.challengeWords) {
+            this.startPuzzle(null, false, this.challengeWords);
+        } else if (this.isPractice) {
             this.startPuzzle(null, true);
         } else {
             this.startPuzzle(this.currentDateStr || this.todayStr, false);
@@ -74,7 +93,9 @@ class ElementSpellerGame {
 
         window.addEventListener("popstate", () => {
             this.checkURLParamsAndStorage();
-            if (this.isPractice) {
+            if (this.isChallenge && this.challengeWords) {
+                this.startPuzzle(null, false, this.challengeWords);
+            } else if (this.isPractice) {
                 this.startPuzzle(null, true);
             } else {
                 this.startPuzzle(this.currentDateStr || this.todayStr, false);
@@ -197,6 +218,7 @@ class ElementSpellerGame {
             shareScoreNoSpoilerBtn: document.getElementById("share-score-no-spoiler-btn"),
             shareScoreSpoilerBtn: document.getElementById("share-score-spoiler-btn"),
             shareScoreQuickBtn: document.getElementById("share-score-quick-btn"),
+            challengeFriendSolvedBtn: document.getElementById("challenge-friend-solved-btn"),
             solvedReplayBtn: document.getElementById("solved-replay-btn"),
 
             // Modals
@@ -206,6 +228,29 @@ class ElementSpellerGame {
             settingsModal: document.getElementById("settings-modal"),
             darkModeToggle: document.getElementById("dark-mode-toggle"),
             settingsSyncStatus: document.getElementById("settings-sync-status"),
+
+            // Challenge Modal & Controls
+            openChallengeBtn: document.getElementById("open-challenge-btn"),
+            challengeModal: document.getElementById("challenge-modal"),
+            closeChallengeModalBtn: document.getElementById("close-challenge-modal-btn"),
+            challengeOptCurrent: document.getElementById("challenge-opt-current"),
+            challengeOptRandom: document.getElementById("challenge-opt-random"),
+            challengeOptCurrentSub: document.getElementById("challenge-opt-current-sub"),
+            challengeRerollContainer: document.getElementById("challenge-reroll-container"),
+            challengeRerollBtn: document.getElementById("challenge-reroll-btn"),
+            challengeRerollStatus: document.getElementById("challenge-reroll-status"),
+            challengePreviewCountLabel: document.getElementById("challenge-preview-count-label"),
+            challengePeekBtn: document.getElementById("challenge-peek-btn"),
+            challengeWordsChipsRow: document.getElementById("challenge-words-chips-row"),
+            challengeTimeCard: document.getElementById("challenge-time-card"),
+            challengeIncludeTimeCheck: document.getElementById("challenge-include-time-check"),
+            challengeTimeStatPreview: document.getElementById("challenge-time-stat-preview"),
+            challengeLinkInput: document.getElementById("challenge-link-input"),
+            challengeCopyLinkBtn: document.getElementById("challenge-copy-link-btn"),
+            challengeMsgBody: document.getElementById("challenge-msg-body"),
+            challengeSendTextBtn: document.getElementById("challenge-send-text-btn"),
+            challengeCopyAllBtn: document.getElementById("challenge-copy-all-btn"),
+            challengeToast: document.getElementById("challenge-toast"),
 
             // Periodic table section on main screen
             periodicTableSection: document.getElementById("periodic-table-section"),
@@ -680,6 +725,59 @@ class ElementSpellerGame {
             });
         }
 
+        // Friend Challenge Modal controls
+        if (this.dom.openChallengeBtn) {
+            this.dom.openChallengeBtn.addEventListener("click", () => this.openChallengeModal());
+        }
+        if (this.dom.challengeFriendSolvedBtn) {
+            this.dom.challengeFriendSolvedBtn.addEventListener("click", () => {
+                this.openChallengeModal({ useCurrentWords: true, includeTime: true });
+            });
+        }
+        if (this.dom.closeChallengeModalBtn) {
+            this.dom.closeChallengeModalBtn.addEventListener("click", () => {
+                this.closeModal(this.dom.challengeModal);
+            });
+        }
+        if (this.dom.challengeOptCurrent) {
+            this.dom.challengeOptCurrent.addEventListener("change", () => {
+                if (this.dom.challengeOptCurrent.checked) {
+                    this.challengeSourceMode = "current";
+                    if (this.dailyWords && this.dailyWords.length > 0) {
+                        this.activeChallengeWords = [...this.dailyWords];
+                    }
+                    this.updateChallengeModalUI();
+                }
+            });
+        }
+        if (this.dom.challengeOptRandom) {
+            this.dom.challengeOptRandom.addEventListener("change", () => {
+                if (this.dom.challengeOptRandom.checked) {
+                    this.challengeSourceMode = "random";
+                    this.activeChallengeWords = generateRandomChallengeWords(6);
+                    this.updateChallengeModalUI();
+                }
+            });
+        }
+        if (this.dom.challengeRerollBtn) {
+            this.dom.challengeRerollBtn.addEventListener("click", () => this.rollNewChallengeRandomWords());
+        }
+        if (this.dom.challengePeekBtn) {
+            this.dom.challengePeekBtn.addEventListener("click", () => this.toggleChallengePeek());
+        }
+        if (this.dom.challengeIncludeTimeCheck) {
+            this.dom.challengeIncludeTimeCheck.addEventListener("change", () => this.updateChallengeModalUI());
+        }
+        if (this.dom.challengeCopyLinkBtn) {
+            this.dom.challengeCopyLinkBtn.addEventListener("click", () => this.copyChallengeLinkOnly());
+        }
+        if (this.dom.challengeCopyAllBtn) {
+            this.dom.challengeCopyAllBtn.addEventListener("click", () => this.copyChallengeAll());
+        }
+        if (this.dom.challengeSendTextBtn) {
+            this.dom.challengeSendTextBtn.addEventListener("click", () => this.sendChallengeViaText());
+        }
+
         if (this.dom.darkModeToggle) {
             const savedTheme = localStorage.getItem("elementspeller_theme_v1");
             const isDark = savedTheme === "dark" || document.documentElement.getAttribute("data-theme") === "dark";
@@ -861,6 +959,30 @@ class ElementSpellerGame {
     checkURLParamsAndStorage() {
         try {
             const urlParams = new URLSearchParams(window.location.search);
+            const challengeParam = urlParams.get("challenge") || urlParams.get("c");
+
+            if (challengeParam) {
+                const decoded = decodeChallengeWords(challengeParam);
+                if (decoded && Array.isArray(decoded) && decoded.length > 0) {
+                    this.isChallenge = true;
+                    this.challengeWords = decoded;
+                    this.challengeToken = challengeParam;
+                    this.isPractice = false;
+                    this.currentDateStr = null;
+                    this.updateModeUI(false);
+                    return;
+                } else {
+                    console.warn("Invalid or corrupt challenge parameter in URL.");
+                    this.isChallenge = false;
+                    this.challengeWords = null;
+                    this.challengeToken = null;
+                }
+            }
+
+            this.isChallenge = false;
+            this.challengeWords = null;
+            this.challengeToken = null;
+
             const dateParam = urlParams.get("date");
             const modeParam = urlParams.get("mode");
 
@@ -878,11 +1000,17 @@ class ElementSpellerGame {
         } catch (e) {
             console.warn("Storage/URL mode detection error:", e);
             this.isPractice = false;
+            this.isChallenge = false;
         }
         this.updateModeUI(false);
     }
 
     setGameMode(isPractice) {
+        if (this.isChallenge) {
+            this.isChallenge = false;
+            this.challengeWords = null;
+            this.challengeToken = null;
+        }
         if (this.isPractice === isPractice) {
             if (isPractice) {
                 this.startPuzzle(null, true);
@@ -903,7 +1031,10 @@ class ElementSpellerGame {
         const modePracticeBtn = this.dom?.modePracticeBtn || document.getElementById("mode-practice-btn");
 
         if (modeDailyBtn && modePracticeBtn) {
-            if (this.isPractice) {
+            if (this.isChallenge) {
+                modeDailyBtn.classList.remove("active");
+                modePracticeBtn.classList.remove("active");
+            } else if (this.isPractice) {
                 modeDailyBtn.classList.remove("active");
                 modePracticeBtn.classList.add("active");
             } else {
@@ -912,22 +1043,33 @@ class ElementSpellerGame {
             }
         }
 
-        try {
-            localStorage.setItem("elementspeller_game_mode", this.isPractice ? "practice" : "daily");
-        } catch (e) { }
+        if (!this.isChallenge) {
+            try {
+                localStorage.setItem("elementspeller_game_mode", this.isPractice ? "practice" : "daily");
+            } catch (e) { }
+        }
 
         if (updateURL && window.history && window.history.replaceState) {
             try {
                 const url = new URL(window.location.href);
-                if (this.isPractice) {
-                    url.searchParams.set("mode", "practice");
+                if (this.isChallenge && this.challengeToken) {
+                    url.searchParams.set("challenge", this.challengeToken);
+                    url.searchParams.delete("c");
+                    url.searchParams.delete("mode");
                     url.searchParams.delete("date");
                 } else {
-                    url.searchParams.delete("mode");
-                    if (this.currentDateStr && this.currentDateStr !== this.todayStr) {
-                        url.searchParams.set("date", this.currentDateStr);
-                    } else {
+                    url.searchParams.delete("challenge");
+                    url.searchParams.delete("c");
+                    if (this.isPractice) {
+                        url.searchParams.set("mode", "practice");
                         url.searchParams.delete("date");
+                    } else {
+                        url.searchParams.delete("mode");
+                        if (this.currentDateStr && this.currentDateStr !== this.todayStr) {
+                            url.searchParams.set("date", this.currentDateStr);
+                        } else {
+                            url.searchParams.delete("date");
+                        }
                     }
                 }
                 const newSearch = url.searchParams.toString();
@@ -939,10 +1081,75 @@ class ElementSpellerGame {
         }
     }
 
-    startPuzzle(dateStr, isPractice = false) {
-        this.isPractice = isPractice;
+    startPuzzle(dateStr, isPractice = false, customWords = null) {
+        if (customWords && Array.isArray(customWords) && customWords.length > 0) {
+            this.isChallenge = true;
+            this.challengeWords = customWords;
+            this.isPractice = false;
+        } else {
+            this.isChallenge = false;
+            this.challengeWords = null;
+            this.challengeToken = null;
+            this.isPractice = isPractice;
+        }
         this.isGameOver = false;
         this.isPaused = false;
+        this.currentWordIdx = 0;
+        this.solveTimeMs = null;
+        this.elapsedOffsetMs = 0;
+        this.stopSolveTimer();
+
+        if (this.dom.pauseOverlay) this.dom.pauseOverlay.style.display = "none";
+        if (this.dom.pauseBtn) {
+            this.dom.pauseBtn.classList.remove("is-paused");
+            this.dom.pauseBtn.disabled = false;
+        }
+        if (this.dom.pauseBtnIcon) this.dom.pauseBtnIcon.textContent = "⏸️";
+        if (this.dom.pauseBtnText) this.dom.pauseBtnText.textContent = "Pause";
+
+        if (this.dom.undoBtn) this.dom.undoBtn.disabled = true;
+        if (this.dom.clearWordBtn) this.dom.clearWordBtn.disabled = true;
+        if (this.dom.solvedCard) this.dom.solvedCard.style.display = "none";
+        if (this.dom.inputGroupArea) this.dom.inputGroupArea.style.display = "block";
+        if (this.dom.nextWordQuickBtn) this.dom.nextWordQuickBtn.style.display = "none";
+
+        if (this.isChallenge && this.challengeWords) {
+            this.currentDateStr = null;
+            this.dailyWords = [...this.challengeWords];
+            this.puzzleNumber = "Challenge";
+            this.dom.puzzleTitle.textContent = `⚔️ Friend Challenge • ${this.dailyWords.length} Words`;
+            this.dom.modeTitle.textContent = "Element-Speller (Challenge)";
+
+            this.wordStates = this.dailyWords.map(word => ({
+                word,
+                placedElements: [],
+                isSolved: false,
+                solveTimeMs: null
+            }));
+
+            this.isWordRevealed = false;
+            this.hintsUsed = 0;
+            this.solveTimeMs = null;
+            this.stopSolveTimer();
+            this.dom.liveTimerDisplay.textContent = "00:00.0";
+
+            this.updateModeUI(true);
+            this.renderWordPicker();
+            this.renderTargetWord();
+            this.renderElementSlots();
+            this.updateButtonsState();
+
+            this.dom.statusMessage.textContent = `⚔️ You were challenged by a friend! Click 'Start Game' to reveal the ${this.dailyWords.length} words and begin!`;
+            this.dom.statusMessage.className = "info";
+
+            if (this.dom.elementInput) {
+                this.dom.elementInput.value = "";
+                this.dom.elementInput.disabled = true;
+                this.dom.elementInput.placeholder = "Click Start to reveal words...";
+            }
+            if (this.dom.submitBtn) this.dom.submitBtn.disabled = true;
+            return;
+        }
         this.currentWordIdx = 0;
         this.solveTimeMs = null;
         this.elapsedOffsetMs = 0;
@@ -1975,7 +2182,17 @@ class ElementSpellerGame {
             solveTimeMs: ws.solveTimeMs
         }));
 
-        if (!this.isPractice) {
+        if (this.isChallenge) {
+            recordPracticeCompletion(
+                this.dailyWords,
+                true,
+                wordRecords,
+                this.solveTimeMs,
+                this.hintsUsed || 0,
+                "challenge",
+                "Friend Challenge"
+            );
+        } else if (!this.isPractice) {
             recordCompletion(
                 this.currentDateStr,
                 this.puzzleNumber,
@@ -1997,17 +2214,25 @@ class ElementSpellerGame {
         }
 
         const formatted = formatTimeMs(this.solveTimeMs);
-        this.dom.statusMessage.textContent = totalWords > 1
-            ? `🎉🧪 Fantastic! All ${totalWords} words solved in ${formatted}!`
-            : `🎉🧪 Fantastic! Word solved in ${formatted}!`;
+        if (this.isChallenge) {
+            this.dom.statusMessage.textContent = `🎉⚔️ Challenge Complete! All ${totalWords} words solved in ${formatted}!`;
+        } else {
+            this.dom.statusMessage.textContent = totalWords > 1
+                ? `🎉🧪 Fantastic! All ${totalWords} words solved in ${formatted}!`
+                : `🎉🧪 Fantastic! Word solved in ${formatted}!`;
+        }
         this.dom.statusMessage.className = "success";
 
         if (this.dom.solvedCard) {
             this.dom.solvedCard.style.display = "block";
             if (this.dom.solvedTitle) {
-                this.dom.solvedTitle.textContent = totalWords > 1
-                    ? `🎉🧪 All ${totalWords} Words Solved!`
-                    : "🎉🧪 Word Solved!";
+                if (this.isChallenge) {
+                    this.dom.solvedTitle.textContent = "🎉⚔️ Challenge Complete!";
+                } else if (totalWords > 1) {
+                    this.dom.solvedTitle.textContent = `🎉🧪 All ${totalWords} Words Solved!`;
+                } else {
+                    this.dom.solvedTitle.textContent = "🎉🧪 Word Solved!";
+                }
             }
             this.dom.solvedTimeStat.textContent = totalWords > 1
                 ? `All ${totalWords} Words Solved in ${formatted}`
@@ -2658,11 +2883,13 @@ class ElementSpellerGame {
     copyShareCard(withSpoiler = false, targetBtn = null) {
         const totalWords = this.dailyWords.length || 6;
         const isMulti = totalWords > 1;
-        const puzzleTag = this.isPractice
-            ? "Element-Speller Practice"
-            : (isMulti ? `Element-Speller #${this.puzzleNumber} (${totalWords} Words)` : `Element-Speller #${this.puzzleNumber}`);
+        const puzzleTag = this.isChallenge
+            ? `Element-Speller Friend Challenge (${totalWords} Words)`
+            : (this.isPractice
+                ? "Element-Speller Practice"
+                : (isMulti ? `Element-Speller #${this.puzzleNumber} (${totalWords} Words)` : `Element-Speller #${this.puzzleNumber}`));
         const dateKey = this.currentDateStr || this.todayStr;
-        const rec = (!this.isPractice && dateKey) ? getRecordForDate(dateKey) : null;
+        const rec = (!this.isPractice && !this.isChallenge && dateKey) ? getRecordForDate(dateKey) : null;
         const solveMs = (this.solveTimeMs && this.solveTimeMs > 0)
             ? this.solveTimeMs
             : (rec && rec.solveTimeMs > 0 ? rec.solveTimeMs : null);
@@ -2714,7 +2941,11 @@ class ElementSpellerGame {
             });
         }
 
-        const shareText = `🧪 ${puzzleTag}\n${timeHeader}\n${hintLine}\n\n${lines.join("\n")}\n\nhttps://amitjoshi2724.github.io/Element-Speller/`;
+        const shareUrl = this.isChallenge && this.challengeToken
+            ? buildChallengeURL(this.challengeToken)
+            : "https://amitjoshi2724.github.io/Element-Speller/";
+
+        const shareText = `🧪 ${puzzleTag}\n${timeHeader}\n${hintLine}\n\n${lines.join("\n")}\n\n${shareUrl}`;
 
         navigator.clipboard.writeText(shareText).then(() => {
             if (targetBtn) {
@@ -2727,6 +2958,177 @@ class ElementSpellerGame {
         }).catch(() => {
             alert(shareText);
         });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Friend Challenge Creation & Text Sharing Modal Handlers
+    // ---------------------------------------------------------------------------
+    openChallengeModal(options = {}) {
+        const hasCurrentWords = Array.isArray(this.dailyWords) && this.dailyWords.length > 0;
+        const preferCurrent = options.useCurrentWords !== undefined ? options.useCurrentWords : hasCurrentWords;
+
+        this.challengeSourceMode = preferCurrent ? "current" : "random";
+        this.isChallengePeekRevealed = false;
+
+        if (this.dom.challengeOptCurrent) {
+            this.dom.challengeOptCurrent.checked = preferCurrent;
+        }
+        if (this.dom.challengeOptRandom) {
+            this.dom.challengeOptRandom.checked = !preferCurrent;
+        }
+
+        if (preferCurrent && hasCurrentWords) {
+            this.activeChallengeWords = [...this.dailyWords];
+        } else {
+            this.activeChallengeWords = generateRandomChallengeWords(6);
+        }
+
+        const hasSolvedTime = this.solveTimeMs && this.solveTimeMs > 0 && (this.isGameOver || (this.wordStates && this.wordStates.every(w => w.isSolved)));
+        if (this.dom.challengeTimeCard) {
+            if (preferCurrent && hasSolvedTime) {
+                this.dom.challengeTimeCard.style.display = "block";
+                if (this.dom.challengeTimeStatPreview) {
+                    this.dom.challengeTimeStatPreview.textContent = formatTimeMs(this.solveTimeMs);
+                }
+                if (this.dom.challengeIncludeTimeCheck) {
+                    this.dom.challengeIncludeTimeCheck.checked = options.includeTime !== undefined ? options.includeTime : true;
+                }
+            } else {
+                this.dom.challengeTimeCard.style.display = "none";
+            }
+        }
+
+        this.updateChallengeModalUI();
+        this.openModal(this.dom.challengeModal);
+    }
+
+    updateChallengeModalUI() {
+        if (!this.activeChallengeWords || this.activeChallengeWords.length === 0) {
+            this.activeChallengeWords = generateRandomChallengeWords(6);
+        }
+
+        const isCurrent = this.challengeSourceMode === "current";
+        if (this.dom.challengeRerollContainer) {
+            this.dom.challengeRerollContainer.style.display = isCurrent ? "none" : "flex";
+        }
+
+        if (this.dom.challengePreviewCountLabel) {
+            this.dom.challengePreviewCountLabel.textContent = `${this.activeChallengeWords.length} Words in this Challenge`;
+        }
+
+        if (this.dom.challengeWordsChipsRow) {
+            this.dom.challengeWordsChipsRow.innerHTML = this.activeChallengeWords.map((w, idx) => {
+                if (this.isChallengePeekRevealed) {
+                    return `<span class="challenge-word-chip revealed"><span class="chip-idx">#${idx + 1}</span> <strong>${w}</strong></span>`;
+                }
+                return `<span class="challenge-word-chip hidden-spoiler"><span class="chip-idx">#${idx + 1}</span> ${w.length} letters</span>`;
+            }).join("");
+        }
+
+        if (this.dom.challengePeekBtn) {
+            this.dom.challengePeekBtn.textContent = this.isChallengePeekRevealed ? "🙈 Hide Words" : "👁️ Peek Words (Spoiler)";
+        }
+
+        const includeTime = isCurrent && this.dom.challengeIncludeTimeCheck && this.dom.challengeIncludeTimeCheck.checked && this.solveTimeMs > 0;
+        const formattedTime = includeTime ? formatTimeMs(this.solveTimeMs) : null;
+
+        const token = encodeChallengeWords(this.activeChallengeWords);
+        const url = buildChallengeURL(token);
+
+        if (this.dom.challengeLinkInput) {
+            this.dom.challengeLinkInput.value = url;
+        }
+
+        const msgText = buildChallengeMessage({
+            url,
+            formattedTime,
+            wordCount: this.activeChallengeWords.length
+        });
+
+        if (this.dom.challengeMsgBody) {
+            this.dom.challengeMsgBody.textContent = msgText;
+        }
+
+        this.currentChallengeUrl = url;
+        this.currentChallengeMsg = msgText;
+    }
+
+    rollNewChallengeRandomWords() {
+        this.activeChallengeWords = generateRandomChallengeWords(6);
+        this.challengeSourceMode = "random";
+        if (this.dom.challengeOptRandom) this.dom.challengeOptRandom.checked = true;
+        if (this.dom.challengeTimeCard) this.dom.challengeTimeCard.style.display = "none";
+        this.updateChallengeModalUI();
+        this.showChallengeToast("🎲 Rolled fresh 6-word set!");
+    }
+
+    toggleChallengePeek() {
+        this.isChallengePeekRevealed = !this.isChallengePeekRevealed;
+        this.updateChallengeModalUI();
+    }
+
+    async sendChallengeViaText() {
+        if (!this.currentChallengeUrl || !this.currentChallengeMsg) return;
+        const res = await shareChallengePayload({
+            title: "Element-Speller Challenge",
+            text: this.currentChallengeMsg,
+            url: this.currentChallengeUrl
+        });
+
+        if (res.method === "clipboard") {
+            this.showChallengeToast("📋 Copied message & link! Paste it into your text message.");
+        } else if (res.method === "share") {
+            this.showChallengeToast("🚀 Sent to share sheet!");
+        }
+    }
+
+    async copyChallengeLinkOnly() {
+        if (!this.currentChallengeUrl) return;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(this.currentChallengeUrl);
+            } else {
+                const ta = document.createElement("textarea");
+                ta.value = this.currentChallengeUrl;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+            }
+            this.showChallengeToast("📋 Copied challenge link to clipboard!");
+        } catch (e) {
+            this.showChallengeToast("❌ Could not copy link.");
+        }
+    }
+
+    async copyChallengeAll() {
+        if (!this.currentChallengeMsg) return;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(this.currentChallengeMsg);
+            } else {
+                const ta = document.createElement("textarea");
+                ta.value = this.currentChallengeMsg;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand("copy");
+                document.body.removeChild(ta);
+            }
+            this.showChallengeToast("📋 Copied message & link to clipboard!");
+        } catch (e) {
+            this.showChallengeToast("❌ Could not copy message.");
+        }
+    }
+
+    showChallengeToast(msg) {
+        const toast = this.dom.challengeToast;
+        if (!toast) return;
+        toast.textContent = msg;
+        toast.classList.remove("hidden");
+        clearTimeout(this.challengeToastTimer);
+        this.challengeToastTimer = setTimeout(() => {
+            toast.classList.add("hidden");
+        }, 2800);
     }
 
     // ---------------------------------------------------------------------------

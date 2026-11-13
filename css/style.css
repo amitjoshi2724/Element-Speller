@@ -2163,3 +2163,41 @@ input, textarea {
     border-color: #eab308;
 }
 
+/* Challenge Nav & Action Buttons */
+.nav-action-btn.challenge-nav-btn {
+    background: linear-gradient(135deg, #ede9fe 0%, #f5f3ff 100%);
+    border: 1.5px solid #a78bfa;
+    color: #6d28d9;
+    font-weight: 800;
+}
+
+.nav-action-btn.challenge-nav-btn:hover {
+    background: #7c3aed;
+    color: #ffffff;
+    border-color: #7c3aed;
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+}
+
+.share-btn.challenge-btn {
+    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+    color: #ffffff !important;
+    border: none;
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+}
+
+.share-btn.challenge-btn:hover {
+    background: linear-gradient(135deg, #6d28d9 0%, #5b21b6 100%);
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.45);
+}
+
+[data-theme="dark"] .nav-action-btn.challenge-nav-btn {
+    background: #2e1065;
+    border-color: #7c3aed;
+    color: #ddd6fe;
+}
+
+[data-theme="dark"] .nav-action-btn.challenge-nav-btn:hover {
+    background: #7c3aed;
+    color: #ffffff;
+}
+
