@@ -4,8 +4,8 @@
  * The words are encrypted with RC4 stream cipher and a randomized 4-byte salt,
  * ensuring no human, preview bot, or link scanner can see the words in plaintext.
  */
-import { isSpellable } from "./speller.js?v=1.4.6";
-import { getRandomWords } from "./prng.js?v=1.4.6";
+import { isSpellable } from "./speller.js?v=1.4.7";
+import { getRandomWords } from "./prng.js?v=1.4.7";
 
 const CHALLENGE_SECRET = "ElementSpeller$SecretKey#Challenge2026!";
 const MAGIC_BYTE_1 = 0xEC; // "E"

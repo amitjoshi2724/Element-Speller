@@ -1,5 +1,5 @@
-import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.6";
-import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.6";
+import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.7";
+import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.7";
 import {
     getStats,
     getHistory,
@@ -17,10 +17,10 @@ import {
     getTimeBin,
     refreshFromCloud,
     syncToCloud
-} from "./storage.js?v=1.4.6";
-import { PeriodicTable } from "./periodic-table.js?v=1.4.6";
-import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.6";
-import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.6";
+} from "./storage.js?v=1.4.7";
+import { PeriodicTable } from "./periodic-table.js?v=1.4.7";
+import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.7";
+import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.7";
 import {
     encodeChallengeWords,
     decodeChallengeWords,
@@ -28,7 +28,7 @@ import {
     buildChallengeMessage,
     shareChallengePayload,
     generateRandomChallengeWords
-} from "./challenge.js?v=1.4.6";
+} from "./challenge.js?v=1.4.7";
 
 class ElementSpellerGame {
     constructor() {
@@ -220,6 +220,7 @@ class ElementSpellerGame {
             shareScoreQuickBtn: document.getElementById("share-score-quick-btn"),
             challengeFriendSolvedBtn: document.getElementById("challenge-friend-solved-btn"),
             solvedReplayBtn: document.getElementById("solved-replay-btn"),
+            solvedPracticeNewBtn: document.getElementById("solved-practice-new-btn"),
 
             // Modals
             howToPlayModal: document.getElementById("how-to-play-modal"),
@@ -615,6 +616,16 @@ class ElementSpellerGame {
         }
         if (this.dom.solvedReplayBtn) {
             this.dom.solvedReplayBtn.addEventListener("click", () => this.handleReset(false));
+        }
+        if (this.dom.practiceNewGameBtn) {
+            this.dom.practiceNewGameBtn.addEventListener("click", () => {
+                this.startPuzzle(null, true);
+            });
+        }
+        if (this.dom.solvedPracticeNewBtn) {
+            this.dom.solvedPracticeNewBtn.addEventListener("click", () => {
+                this.startPuzzle(null, true);
+            });
         }
         if (this.dom.statsRetryBtn) {
             this.dom.statsRetryBtn.addEventListener("click", () => {
@@ -1041,6 +1052,15 @@ class ElementSpellerGame {
                 modeDailyBtn.classList.add("active");
                 modePracticeBtn.classList.remove("active");
             }
+        }
+
+        const practiceNewBtn = this.dom?.practiceNewGameBtn || document.getElementById("practice-new-game-btn");
+        if (practiceNewBtn) {
+            practiceNewBtn.style.display = (this.isPractice && !this.isChallenge) ? "inline-flex" : "none";
+        }
+        const solvedPracticeNewBtn = this.dom?.solvedPracticeNewBtn || document.getElementById("solved-practice-new-btn");
+        if (solvedPracticeNewBtn) {
+            solvedPracticeNewBtn.style.display = (this.isPractice && !this.isChallenge) ? "inline-flex" : "none";
         }
 
         if (!this.isChallenge) {
@@ -3021,7 +3041,7 @@ class ElementSpellerGame {
                 if (this.isChallengePeekRevealed) {
                     return `<span class="challenge-word-chip revealed"><span class="chip-idx">#${idx + 1}</span> <strong>${w}</strong></span>`;
                 }
-                return `<span class="challenge-word-chip hidden-spoiler"><span class="chip-idx">#${idx + 1}</span> ${w.length} letters</span>`;
+                return `<span class="challenge-word-chip hidden-spoiler"><span class="chip-idx">#${idx + 1}</span> 🔒 Hidden</span>`;
             }).join("");
         }
 

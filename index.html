@@ -20,8 +20,8 @@
     <link rel="icon" type="image/png" sizes="64x64" href="images/icon-64.png">
     <link rel="icon" type="image/x-icon" href="favicon.ico">
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="css/style.css?v=1.4.6">
-    <link rel="stylesheet" href="css/modals.css?v=1.4.6">
+    <link rel="stylesheet" href="css/style.css?v=1.4.7">
+    <link rel="stylesheet" href="css/modals.css?v=1.4.7">
     <script>
         (function() {
             try {
@@ -80,7 +80,13 @@
             <img src="images/logo.png" alt="Element-Speller — Daily Word Puzzle" class="main-logo-img">
             <h1 class="visually-hidden">Element-Speller</h1>
         </div>
-        <div class="puzzle-meta-badge" id="puzzle-meta-badge">Loading Daily Puzzle...</div>
+        <div class="puzzle-meta-container" id="puzzle-meta-container">
+            <div class="puzzle-meta-badge" id="puzzle-meta-badge">Loading Daily Puzzle...</div>
+            <button type="button" id="practice-new-game-btn" class="practice-new-game-btn" style="display: none;"
+                title="Start a fresh 6-word practice game">
+                <span class="btn-icon">🔄</span> New Game
+            </button>
+        </div>
         <p class="game-intro-text">Spell all 6 target words using chemical elements as fast as you can! <strong>Click any word to solve in any order. Drag any element to the 🗑️ trash can to delete it.</strong></p>
 
         <!-- Main Responsive Two-Column Layout (Side-by-Side on Desktop, Stacked on Mobile) -->
@@ -170,6 +176,8 @@
                         <button id="challenge-friend-solved-btn" class="share-btn challenge-btn"
                             title="Send this exact puzzle to a friend over text to see if they can beat your time!">⚔️ Challenge a Friend</button>
                         <button id="solved-replay-btn" class="quick-action-btn reset">🔄 Retry for Faster Time</button>
+                        <button id="solved-practice-new-btn" class="share-btn primary" style="display: none;"
+                            title="Start a fresh 6-word practice game">✨ New Practice Game</button>
                     </div>
                 </div>
 
@@ -695,7 +703,7 @@
     </div>
 
     <!-- Core Game Controller -->
-    <script type="module" src="js/app.js?v=1.4.6"></script>
+    <script type="module" src="js/app.js?v=1.4.7"></script>
 </body>
 
 </html>
