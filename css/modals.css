@@ -1526,6 +1526,10 @@
     user-select: none;
 }
 
+.pt-tile * {
+    pointer-events: none;
+}
+
 .pt-tile:hover {
     transform: scale(1.15);
     z-index: 10;

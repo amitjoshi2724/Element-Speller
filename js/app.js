@@ -1,5 +1,5 @@
-import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.5";
-import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.5";
+import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.6";
+import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.6";
 import {
     getStats,
     getHistory,
@@ -17,10 +17,10 @@ import {
     getTimeBin,
     refreshFromCloud,
     syncToCloud
-} from "./storage.js?v=1.4.5";
-import { PeriodicTable } from "./periodic-table.js?v=1.4.5";
-import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.5";
-import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.5";
+} from "./storage.js?v=1.4.6";
+import { PeriodicTable } from "./periodic-table.js?v=1.4.6";
+import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.6";
+import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.6";
 import {
     encodeChallengeWords,
     decodeChallengeWords,
@@ -28,7 +28,7 @@ import {
     buildChallengeMessage,
     shareChallengePayload,
     generateRandomChallengeWords
-} from "./challenge.js?v=1.4.5";
+} from "./challenge.js?v=1.4.6";
 
 class ElementSpellerGame {
     constructor() {

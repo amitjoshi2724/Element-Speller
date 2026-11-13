@@ -283,12 +283,34 @@ export class PeriodicTable {
             this.gridContainer.appendChild(tile);
             this.tileElements.push({ elem, data, dom: tile });
         }
+
+        // Delegated click listener on grid container for robustness
+        this.gridContainer.addEventListener('click', (e) => {
+            if (this.hasDragged) return;
+            const tile = e.target ? e.target.closest('.pt-tile') : null;
+            if (!tile || tile.classList.contains('placeholder')) return;
+            const sym = tile.dataset.symbol;
+            if (sym) {
+                this.selectElementBySymbol(sym);
+            }
+        });
     }
 
     findElementBySymbol(symbol) {
         if (!symbol) return null;
         const symUpper = symbol.trim().toUpperCase();
         return PERIODIC_ELEMENTS.find(e => e.s.toUpperCase() === symUpper) || null;
+    }
+
+    selectElementBySymbol(symbol) {
+        if (!symbol) return null;
+        const elem = this.findElementBySymbol(symbol);
+        if (elem) {
+            const data = elementData[elem.s] || { name: elem.s, number: elem.n };
+            this.selectElement(elem, data);
+            return elem;
+        }
+        return null;
     }
 
     selectElement(elem, data = null) {
@@ -413,19 +435,19 @@ export class PeriodicTable {
             this.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
             if (this.activePointers.size === 1) {
-                this.isDragging = true;
+                this.isDragging = false;
                 this.hasDragged = false;
                 this.dragStartX = e.clientX;
                 this.dragStartY = e.clientY;
                 this.initialPanX = this.panX;
                 this.initialPanY = this.panY;
-                this.viewport.classList.add('is-dragging');
-                try {
-                    this.viewport.setPointerCapture(e.pointerId);
-                } catch (err) {}
+                this.downTile = e.target ? e.target.closest('.pt-tile') : null;
+                // Note: Do NOT setPointerCapture on pointerdown - that diverts synthetic clicks
+                // away from child buttons in Safari and Chrome. Only capture once actual panning begins.
             } else if (this.activePointers.size === 2) {
                 this.isDragging = false;
                 this.hasDragged = true;
+                this.downTile = null;
                 const pts = Array.from(this.activePointers.values());
                 this.pinchStartDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
                 this.pinchStartScale = this.scale;
@@ -448,35 +470,68 @@ export class PeriodicTable {
                     const newScale = this.pinchStartScale * ratio;
                     this.zoomAt(newScale, this.pinchMidpoint.x, this.pinchMidpoint.y, false);
                 }
-            } else if (this.isDragging && this.activePointers.size === 1) {
+            } else if (this.activePointers.size === 1) {
                 const dx = e.clientX - this.dragStartX;
                 const dy = e.clientY - this.dragStartY;
-                if (Math.hypot(dx, dy) > 5) {
+                const dist = Math.hypot(dx, dy);
+
+                // Distinguish intentional drag from tap jitter (threshold: 8px)
+                if (!this.isDragging && dist > 8) {
+                    this.isDragging = true;
                     this.hasDragged = true;
+                    this.downTile = null;
+                    this.viewport.classList.add('is-dragging');
+                    try {
+                        this.viewport.setPointerCapture(e.pointerId);
+                    } catch (err) {}
                 }
-                this.panX = this.initialPanX + dx;
-                this.panY = this.initialPanY + dy;
-                this.clampPan();
-                this.applyTransform(false);
+
+                if (this.isDragging) {
+                    this.panX = this.initialPanX + dx;
+                    this.panY = this.initialPanY + dy;
+                    this.clampPan();
+                    this.applyTransform(false);
+                }
             }
         });
 
         const handlePointerEnd = (e) => {
             this.activePointers.delete(e.pointerId);
             try {
-                this.viewport.releasePointerCapture(e.pointerId);
+                if (this.viewport.hasPointerCapture && this.viewport.hasPointerCapture(e.pointerId)) {
+                    this.viewport.releasePointerCapture(e.pointerId);
+                }
             } catch (err) {}
+
+            const hadDragged = this.hasDragged;
+            const tappedTile = this.downTile;
 
             if (this.activePointers.size === 0) {
                 this.isDragging = false;
+                this.downTile = null;
                 this.viewport.classList.remove('is-dragging');
                 this.pinchStartDist = null;
-                setTimeout(() => {
+
+                // Immediate selection on pointerup for crisp mobile tap response
+                if (!hadDragged && e.type === 'pointerup') {
+                    let tile = tappedTile;
+                    if (!tile || !tile.dataset || !tile.dataset.symbol) {
+                        const targetEl = (typeof document.elementFromPoint === 'function')
+                            ? document.elementFromPoint(e.clientX, e.clientY)
+                            : e.target;
+                        tile = targetEl ? targetEl.closest('.pt-tile') : null;
+                    }
+                    if (tile && !tile.classList.contains('placeholder') && tile.dataset.symbol) {
+                        this.selectElementBySymbol(tile.dataset.symbol);
+                    }
+                }
+
+                // Reset hasDragged on next animation frame
+                requestAnimationFrame(() => {
                     this.hasDragged = false;
-                }, 80);
+                });
             } else if (this.activePointers.size === 1) {
                 const pt = this.activePointers.values().next().value;
-                this.isDragging = true;
                 this.dragStartX = pt.x;
                 this.dragStartY = pt.y;
                 this.initialPanX = this.panX;
@@ -487,6 +542,17 @@ export class PeriodicTable {
 
         this.viewport.addEventListener('pointerup', handlePointerEnd);
         this.viewport.addEventListener('pointercancel', handlePointerEnd);
+
+        // Delegated click on viewport to catch any clicks that bubble or are dispatched to viewport
+        this.viewport.addEventListener('click', (e) => {
+            if (this.hasDragged) return;
+            const tile = e.target ? e.target.closest('.pt-tile') : null;
+            if (!tile || tile.classList.contains('placeholder')) return;
+            const sym = tile.dataset.symbol;
+            if (sym) {
+                this.selectElementBySymbol(sym);
+            }
+        });
 
         // Double click background to toggle between 100% and 1.8x zoom
         this.viewport.addEventListener('dblclick', (e) => {

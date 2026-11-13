@@ -1,12 +1,12 @@
 /**
- * ElementSpeller - Dual-Layer Storage & Cloud Sync Module (v1.4.5)
+ * ElementSpeller - Dual-Layer Storage & Cloud Sync Module (v1.4.6)
  * Offline-first localStorage with direct Firestore v1 REST API cloud synchronization.
  * Uses pure HTTPS fetch (POST :batchGet & PATCH) with Firebase Auth ID tokens,
  * completely eliminating Safari/WebKit @firebase/firestore IndexedDB & WebChannel bugs.
  */
-import { onAuthChange, getCurrentUser } from "./auth.js?v=1.4.5";
-import { FIREBASE_CONFIG, purgeExternalApiCaches } from "./firebase-config.js?v=1.4.5";
-import { getPuzzleNumber, getDailyWords, getTodayDateStr, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.5";
+import { onAuthChange, getCurrentUser } from "./auth.js?v=1.4.6";
+import { FIREBASE_CONFIG, purgeExternalApiCaches } from "./firebase-config.js?v=1.4.6";
+import { getPuzzleNumber, getDailyWords, getTodayDateStr, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.6";
 
 const STATS_KEY = "elementspeller_stats_v1";
 const HISTORY_KEY = "elementspeller_history_v1";
