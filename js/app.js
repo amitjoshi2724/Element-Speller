@@ -1,5 +1,5 @@
-import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.7";
-import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.7";
+import { elementData, symbols, nameToData, symbolToData, parseElementInput } from "./elements.js?v=1.4.8";
+import { getDailyWords, getRandomWords, getTodayDateStr, getPuzzleNumber, getDateForPuzzleNumber, EPOCH_DATE_STR, parseDate, SIX_WORD_ERA_START_DATE } from "./prng.js?v=1.4.8";
 import {
     getStats,
     getHistory,
@@ -17,10 +17,10 @@ import {
     getTimeBin,
     refreshFromCloud,
     syncToCloud
-} from "./storage.js?v=1.4.7";
-import { PeriodicTable } from "./periodic-table.js?v=1.4.7";
-import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.7";
-import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.7";
+} from "./storage.js?v=1.4.8";
+import { PeriodicTable } from "./periodic-table.js?v=1.4.8";
+import { setupAuthUI, getCurrentUser, signInWithGoogle, onAuthChange, waitForAuthReady } from "./auth.js?v=1.4.8";
+import { isSpellable, getValidNextElements } from "./speller.js?v=1.4.8";
 import {
     encodeChallengeWords,
     decodeChallengeWords,
@@ -28,7 +28,7 @@ import {
     buildChallengeMessage,
     shareChallengePayload,
     generateRandomChallengeWords
-} from "./challenge.js?v=1.4.7";
+} from "./challenge.js?v=1.4.8";
 
 class ElementSpellerGame {
     constructor() {
@@ -174,6 +174,7 @@ class ElementSpellerGame {
     initDOM() {
         this.dom = {
             puzzleTitle: document.getElementById("puzzle-meta-badge"),
+            practiceNewGameBtn: document.getElementById("practice-new-game-btn"),
             modeDailyBtn: document.getElementById("mode-daily-btn"),
             modePracticeBtn: document.getElementById("mode-practice-btn"),
             targetWordDisplay: document.getElementById("target-word-display"),
@@ -617,16 +618,27 @@ class ElementSpellerGame {
         if (this.dom.solvedReplayBtn) {
             this.dom.solvedReplayBtn.addEventListener("click", () => this.handleReset(false));
         }
-        if (this.dom.practiceNewGameBtn) {
-            this.dom.practiceNewGameBtn.addEventListener("click", () => {
-                this.startPuzzle(null, true);
+        const practiceNewBtn = this.dom.practiceNewGameBtn || document.getElementById("practice-new-game-btn");
+        if (practiceNewBtn) {
+            practiceNewBtn.addEventListener("click", () => {
+                this.startNewPracticeGame();
             });
         }
-        if (this.dom.solvedPracticeNewBtn) {
-            this.dom.solvedPracticeNewBtn.addEventListener("click", () => {
-                this.startPuzzle(null, true);
+        const solvedPracticeNewBtn = this.dom.solvedPracticeNewBtn || document.getElementById("solved-practice-new-btn");
+        if (solvedPracticeNewBtn) {
+            solvedPracticeNewBtn.addEventListener("click", () => {
+                this.startNewPracticeGame();
             });
         }
+
+        // Global delegated click listener so clicking New Game works 100% reliably
+        document.addEventListener("click", (e) => {
+            const btn = e.target ? e.target.closest("#practice-new-game-btn, #solved-practice-new-btn") : null;
+            if (btn) {
+                e.preventDefault();
+                this.startNewPracticeGame();
+            }
+        });
         if (this.dom.statsRetryBtn) {
             this.dom.statsRetryBtn.addEventListener("click", () => {
                 this.closeModal(this.dom.statsModal);
@@ -1016,6 +1028,19 @@ class ElementSpellerGame {
         this.updateModeUI(false);
     }
 
+    startNewPracticeGame() {
+        this.isPractice = true;
+        this.isChallenge = false;
+        this.challengeWords = null;
+        this.challengeToken = null;
+        this.updateModeUI(true);
+        this.startPuzzle(null, true);
+        if (this.dom.statusMessage) {
+            this.dom.statusMessage.textContent = "🎲 New practice game ready! Click 'Start Game' to reveal the 6 words and begin.";
+            this.dom.statusMessage.className = "info";
+        }
+    }
+
     setGameMode(isPractice) {
         if (this.isChallenge) {
             this.isChallenge = false;
@@ -1024,14 +1049,14 @@ class ElementSpellerGame {
         }
         if (this.isPractice === isPractice) {
             if (isPractice) {
-                this.startPuzzle(null, true);
+                this.startNewPracticeGame();
             }
             return;
         }
         this.isPractice = isPractice;
         this.updateModeUI(true);
         if (this.isPractice) {
-            this.startPuzzle(null, true);
+            this.startNewPracticeGame();
         } else {
             this.startPuzzle(this.todayStr, false);
         }

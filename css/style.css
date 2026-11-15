@@ -192,6 +192,10 @@ h1 {
     line-height: 1.2;
 }
 
+.practice-new-game-btn * {
+    pointer-events: none;
+}
+
 .practice-new-game-btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 10px rgba(124, 58, 237, 0.35);
